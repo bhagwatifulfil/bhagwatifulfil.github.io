@@ -962,12 +962,7 @@ body.authenticated #resetSection { display:none !important; }
    <div class="small">Generate one invoice for Monday–Saturday charges for any client.</div>
   </div>
  </div>
- <div class="grid">
-  <div><label>Client</label><select id="invoiceClient"><option value="">Select Client</option></select></div>
-  <div><label>Invoice Period</label><div class="grid"><input id="invoiceStart" type="date"><input id="invoiceEnd" type="date"></div></div>
- </div>
- <button class="primary" type="button" onclick="generateClientInvoice()">GENERATE DRAFT INVOICE</button>
- <div class="notice">Invoices are created as <b>Draft</b>. Client sees them only after Admin verifies and sends them.</div>
+ <div class="notice">Weekly client invoices are created automatically from shipment status. Admin only needs to review, recalculate, verify and send the draft.</div>
  <div id="invoiceMsg"></div>
  <div id="adminInvoiceHistory">Loading...</div>
 </div>
