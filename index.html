@@ -412,6 +412,10 @@ button:disabled{
 ========================================================= */
 .app-header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;margin:0 0 12px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 3px 14px rgba(0,0,0,.05);position:relative;z-index:20}.brand-title{font-size:20px;font-weight:850;letter-spacing:.4px}.brand-subtitle{font-size:12px;opacity:.68;margin-top:3px}.header-actions{display:flex;gap:7px;align-items:center}.menu-btn{width:42px;height:42px;border:1px solid #d9dee7;background:#fff;border-radius:10px;font-size:26px;line-height:1;cursor:pointer}.mini-btn{min-width:42px!important;padding:9px 12px!important}.app-menu{position:relative;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:6px;margin:-4px 0 12px auto;max-width:270px;box-shadow:0 12px 30px rgba(0,0,0,.12);z-index:30}.app-menu button{display:block;width:100%;text-align:left;border:0;background:#fff;padding:11px 12px;border-radius:8px;font-size:14px;cursor:pointer}.app-menu button:hover{background:#f3f4f6}.app-menu .menu-danger{color:#b42318;border-top:1px solid #eee;margin-top:4px}.dashboard-welcome,.dashboard-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}.dash-client-no{font-weight:850;font-size:18px;margin-top:3px}.dashboard-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}.dash-stat{background:#f8fafc;border:1px solid #e6eaf0;border-radius:12px;padding:14px}.dash-stat b{font-size:12px;opacity:.7}.dash-stat strong{display:block;font-size:25px;margin-top:5px}.dashboard-section-title{font-size:12px;font-weight:850;letter-spacing:.7px;margin:20px 0 9px}.quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.quick-card{background:#fff;border:1px solid #e1e6ee;border-radius:12px;padding:14px;text-align:left;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.03)}.quick-card:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(0,0,0,.07)}.quick-card b{display:block;font-size:14px}.quick-card span{display:block;font-size:11px;opacity:.65;margin-top:5px}.dashboard-mini-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}.dash-mini{border:1px solid #e5e7eb;border-radius:11px;padding:12px;background:#fff}.dash-mini b{font-size:12px}.dash-mini strong{display:block;font-size:20px;margin-top:5px}.action-list{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.action-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #f0d8a8;background:#fffaf0;border-radius:11px;padding:11px 12px}.action-item b{font-size:13px}.action-item span{font-weight:800}.admin-page{display:none}.admin-page.active{display:block}.app-page{display:none}.app-page.active{display:block}.admin-stats .dash-stat strong{font-size:24px}@media(max-width:760px){.dashboard-stats,.quick-grid{grid-template-columns:repeat(2,1fr)}.action-list{grid-template-columns:1fr}.dashboard-mini-grid{grid-template-columns:1fr}}
 
+
+/* AUTH GATE: never expose client/admin content before authentication */
+#clientArea.hidden, #adminArea.hidden { display:none !important; }
+#clientArea:not(.hidden), #adminArea:not(.hidden) { display:block; }
 </style>
 </head>
 <body>
@@ -422,7 +426,7 @@ button:disabled{
 </header>
 <!-- LOGIN -->
 <section id="loginSection" class="card">
-    <h2>Client / Admin Login</h2>
+    <h2>Login</h2>
     <div id="loginMsg"></div>
     <label>Email</label>
     <input id="loginEmail" type="email" placeholder="Enter email" autocomplete="off">
@@ -1053,6 +1057,17 @@ let businessPaymentSettings = null;
 let clientWeeklyCodSettlements = [];
 let adminWeeklyCodSettlements = [];
 
+/* INITIAL AUTH GATE
+   Login screen is the only visible screen until Supabase auth succeeds. */
+function enforceLoggedOutView(){
+    loginSection?.classList.remove("hidden");
+    signupSection?.classList.add("hidden");
+    resetSection?.classList.add("hidden");
+    clientArea?.classList.add("hidden");
+    adminArea?.classList.add("hidden");
+}
+
+
 /* =========================================================
     MESSAGE
 ========================================================= */
@@ -1073,6 +1088,8 @@ function showLogin(){
     clientArea.classList.add("hidden");
     adminArea.classList.add("hidden");
 }
+enforceLoggedOutView();
+
 function showSignup(){
     loginSection.classList.add("hidden");
     signupSection.classList.remove("hidden");
