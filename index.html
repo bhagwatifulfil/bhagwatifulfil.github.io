@@ -406,6 +406,12 @@ button:disabled{
 .payment-btns button{margin:0;}
 .lock-banner{border:1px solid #fecaca;background:#fef2f2;color:#991b1b;padding:12px;border-radius:10px;margin-bottom:15px;font-weight:600;}
 .client-status-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+
+/* =========================================================
+   PROFESSIONAL DASHBOARD / THREE-DOT NAVIGATION
+========================================================= */
+.app-header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 18px;margin:0 0 12px;background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 3px 14px rgba(0,0,0,.05);position:relative;z-index:20}.brand-title{font-size:20px;font-weight:850;letter-spacing:.4px}.brand-subtitle{font-size:12px;opacity:.68;margin-top:3px}.header-actions{display:flex;gap:7px;align-items:center}.menu-btn{width:42px;height:42px;border:1px solid #d9dee7;background:#fff;border-radius:10px;font-size:26px;line-height:1;cursor:pointer}.mini-btn{min-width:42px!important;padding:9px 12px!important}.app-menu{position:relative;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:6px;margin:-4px 0 12px auto;max-width:270px;box-shadow:0 12px 30px rgba(0,0,0,.12);z-index:30}.app-menu button{display:block;width:100%;text-align:left;border:0;background:#fff;padding:11px 12px;border-radius:8px;font-size:14px;cursor:pointer}.app-menu button:hover{background:#f3f4f6}.app-menu .menu-danger{color:#b42318;border-top:1px solid #eee;margin-top:4px}.dashboard-welcome,.dashboard-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}.dash-client-no{font-weight:850;font-size:18px;margin-top:3px}.dashboard-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}.dash-stat{background:#f8fafc;border:1px solid #e6eaf0;border-radius:12px;padding:14px}.dash-stat b{font-size:12px;opacity:.7}.dash-stat strong{display:block;font-size:25px;margin-top:5px}.dashboard-section-title{font-size:12px;font-weight:850;letter-spacing:.7px;margin:20px 0 9px}.quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.quick-card{background:#fff;border:1px solid #e1e6ee;border-radius:12px;padding:14px;text-align:left;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.03)}.quick-card:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(0,0,0,.07)}.quick-card b{display:block;font-size:14px}.quick-card span{display:block;font-size:11px;opacity:.65;margin-top:5px}.dashboard-mini-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}.dash-mini{border:1px solid #e5e7eb;border-radius:11px;padding:12px;background:#fff}.dash-mini b{font-size:12px}.dash-mini strong{display:block;font-size:20px;margin-top:5px}.action-list{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.action-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #f0d8a8;background:#fffaf0;border-radius:11px;padding:11px 12px}.action-item b{font-size:13px}.action-item span{font-weight:800}.admin-page{display:none}.admin-page.active{display:block}.app-page{display:none}.app-page.active{display:block}.admin-stats .dash-stat strong{font-size:24px}@media(max-width:760px){.dashboard-stats,.quick-grid{grid-template-columns:repeat(2,1fr)}.action-list{grid-template-columns:1fr}.dashboard-mini-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -466,14 +472,38 @@ button:disabled{
 </section>
 <!-- CLIENT -->
 <section id="clientArea" class="hidden">
- <div class="card">
-  <div class="topbar">
-   <div>
-    <h2>Client Dashboard</h2>
-    <div id="clientWelcome"></div>
-   </div>
-   <button class="danger" onclick="logout()">LOGOUT</button>
+ <div class="app-header">
+  <div>
+   <div class="brand-title">BHAGWATI FULFIL</div>
+   <div class="brand-subtitle" id="clientWelcome">Welcome</div>
   </div>
+  <button class="menu-btn" type="button" aria-label="Open menu" onclick="toggleAppMenu('clientMenu')">⋮</button>
+ </div>
+ <div id="clientMenu" class="app-menu hidden">
+  <button type="button" onclick="showClientPage('dashboard')">Dashboard</button>
+  <button type="button" onclick="showClientPage('booking')">New Booking</button>
+  <button type="button" onclick="showClientPage('shipments')">My Shipments</button>
+  <button type="button" onclick="showClientPage('reports')">Reports & Statistics</button>
+  <button type="button" onclick="showClientPage('cod')">Weekly COD Settlement</button>
+  <button type="button" onclick="showClientPage('invoices')">Invoices & Payments</button>
+  <button type="button" onclick="showClientPage('support')">Support</button>
+  <button type="button" onclick="showClientPage('profile')">My Profile</button>
+  <button type="button" class="menu-danger" onclick="logout()">Logout</button>
+ </div>
+ <div id="clientDashboardHome" class="card app-page">
+  <div class="dashboard-welcome">
+   <div><div class="small">Client No.</div><div id="clientDashboardNo" class="dash-client-no">—</div></div>
+   <div><div class="small">Today</div><div id="clientDashDate" class="dash-client-no">—</div></div>
+  </div>
+  <div id="clientDashStats" class="dashboard-stats"></div>
+  <div class="dashboard-section-title">Quick Access</div>
+  <div class="quick-grid">
+   <button class="quick-card" onclick="showClientPage('booking')"><b>＋ New Booking</b><span>Create shipment</span></button>
+   <button class="quick-card" onclick="showClientPage('shipments')"><b>📦 My Shipments</b><span>Track orders</span></button>
+   <button class="quick-card" onclick="showClientPage('cod')"><b>💰 Weekly COD</b><span>Settlement status</span></button>
+   <button class="quick-card" onclick="showClientPage('invoices')"><b>🧾 Invoices</b><span>View & pay</span></button>
+  </div>
+  <div id="clientDashboardSummary" class="dashboard-mini-grid"></div>
  </div>
  <!-- PROFILE -->
  <div id="clientProfileBox" class="card hidden">
@@ -751,18 +781,23 @@ button:disabled{
 </section>
 <!-- ADMIN -->
 <section id="adminArea" class="hidden">
- <div class="card">
-  <div class="topbar">
-   <h2>Admin Dashboard</h2>
-   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-    <button class="secondary" type="button" onclick="refreshAdminDashboard()">↻ REFRESH DASHBOARD</button>
-    <button class="danger" type="button" onclick="logout()">LOGOUT</button>
-   </div>
+ <div class="app-header">
+  <div><div class="brand-title">BHAGWATI FULFIL ADMIN</div><div class="brand-subtitle">Operations control panel</div></div>
+  <div class="header-actions"><button class="secondary mini-btn" type="button" onclick="refreshAdminDashboard()">↻</button><button class="menu-btn" type="button" aria-label="Open menu" onclick="toggleAppMenu('adminMenu')">⋮</button></div>
+ </div>
+ <div id="adminMenu" class="app-menu hidden">
+  <button type="button" onclick="showAdminPage('dashboard')">Dashboard</button><button type="button" onclick="showAdminPage('clients')">Clients</button><button type="button" onclick="showAdminPage('shipments')">All Shipments</button><button type="button" onclick="showAdminPage('invoices')">Client Invoices</button><button type="button" onclick="showAdminPage('cod')">Weekly COD Settlement</button><button type="button" onclick="showAdminPage('payments')">Payment Submissions</button><button type="button" onclick="showAdminPage('bank')">Business Payment Details</button><button type="button" onclick="showAdminPage('support')">Support</button><button type="button" onclick="showAdminPage('settings')">Settings</button><button type="button" class="menu-danger" onclick="logout()">Logout</button>
  </div>
  <div id="adminMsg"></div>
-</div>
+ <div id="adminDashboardHome" class="card admin-page active">
+  <div class="dashboard-heading"><div><h2>Operations Overview</h2><div class="small">Your complete daily control centre.</div></div></div>
+  <div id="adminDashStats" class="dashboard-stats admin-stats"></div>
+  <div class="dashboard-section-title">ACTION REQUIRED</div><div id="adminActionRequired" class="action-list"></div>
+  <div class="dashboard-section-title">Quick Access</div>
+  <div class="quick-grid"><button class="quick-card" onclick="showAdminPage('shipments')"><b>📦 All Shipments</b><span>Bookings & status</span></button><button class="quick-card" onclick="showAdminPage('invoices')"><b>🧾 Invoices</b><span>Generate & verify</span></button><button class="quick-card" onclick="showAdminPage('cod')"><b>💰 Weekly COD</b><span>Create & pay</span></button><button class="quick-card" onclick="showAdminPage('payments')"><b>💳 Payments</b><span>Verify submissions</span></button></div>
+ </div>
 <!-- NEW BOOKING / CLIENT NOTIFICATION QUEUE -->
-<div class="card" id="adminNotificationCard">
+<div class="card admin-page" id="adminNotificationCard">
  <div class="topbar">
   <div>
    <h2>🔔 New Booking Control</h2>
@@ -774,7 +809,7 @@ button:disabled{
  <div id="adminNotifications">Loading...</div>
 </div>
 <!-- CLIENT SUPPORT -->
-<div class="card" id="adminSupportBox">
+<div class="card admin-page" id="adminSupportBox">
  <div class="topbar">
   <div>
    <h2>📩 Client Support</h2>
@@ -785,14 +820,14 @@ button:disabled{
  <div id="adminSupportList">Loading...</div>
 </div>
 <!-- CANCELLATION ALERT -->
-<div id="adminCancellationAlert" class="cancel-alert hidden">
+<div id="adminCancellationAlert" class="cancel-alert hidden admin-page">
  <div class="cancel-alert-title">
   ⚠️ Cancellation Request
  </div>
  <div id="adminCancellationList"></div>
 </div>
 <!-- ADMIN STATUS -->
-<div class="card">
+<div class="card admin-page" id="adminStatusCard">
  <h2>Admin Status</h2>
  <div class="grid4">
   <div class="ratebox">
@@ -814,14 +849,14 @@ button:disabled{
  </div>
 </div>
 <!-- CLIENT ACCOUNTS -->
-<div class="card">
+<div class="card admin-page" id="adminClientsCard">
  <h2>Client Accounts</h2>
  <div id="adminClients">
   Loading...
  </div>
 </div>
 <!-- ADMIN HISTORY -->
-<div class="card">
+<div class="card admin-page" id="adminShipmentsCard">
  <h2>All Shipment History</h2>
  <div id="adminDailySummary" class="day-summary"></div>
  <div class="filterbar">
@@ -886,13 +921,13 @@ button:disabled{
 </div>
 
 <!-- WEEKLY COD SETTLEMENT ADMIN -->
-<div class="card">
+<div class="card admin-page" id="adminCodCard">
  <div class="topbar"><div><h2>Weekly COD Settlement</h2><div class="small">One consolidated Monday–Saturday COD payout per client.</div></div><button class="secondary" type="button" onclick="loadAdminWeeklyCod()">REFRESH</button></div>
  <div class="grid"><div><label>Client</label><select id="weeklyCodClient"><option value="">Select Client</option></select></div><div><label>Week</label><select id="weeklyCodWeek"></select></div></div>
  <button class="primary" type="button" onclick="createWeeklyCod()">CREATE WEEKLY COD</button><div id="weeklyCodMsg"></div><div id="adminWeeklyCodHistory">Loading...</div>
 </div>
 <!-- BUSINESS PAYMENT SETTINGS -->
-<div class="card">
+<div class="card admin-page" id="adminBankCard">
  <h2>Business Payment Details</h2>
  <div class="small">These details are shown to clients for weekly invoice payment.</div>
  <div class="grid">
@@ -907,10 +942,10 @@ button:disabled{
  <div id="paySettingsMsg"></div>
 </div>
 <!-- CLIENT INVOICES ADMIN -->
-<div class="card">
+<div class="card admin-page" id="adminInvoicesCard">
  <div class="topbar">
   <div>
-   <h2>Client Invoices</h2>
+   <h2>Client Invoices</h2
    <div class="small">Generate one invoice for Monday–Saturday charges for any client.</div>
   </div>
  </div>
@@ -1462,6 +1497,8 @@ async function loadClient(){
     $("ordersBox")
     .classList.remove("hidden");
     await loadOrders();
+    renderClientDashboard();
+    showClientPage("dashboard");
     await loadClientPayments();
     await loadClientSupport();
 }
@@ -2660,10 +2697,8 @@ async function autoGenerateWeeklyDraftInvoices(){
      if(error){console.warn("Weekly draft invoice skipped",c.id,error.message);continue;}
      const all=rows||[];
      if(!all.length)continue;
-     const shipping=all.reduce((a,o)=>a+Number(o.shipping_charge||0),0);
-     const cod=all.filter(o=>o.payment_type==="COD").reduce((a,o)=>a+Number(o.cod_charge||0),0);
-     const rto=all.filter(o=>o.status==="RTO").reduce((a,o)=>a+Number(o.rto_charge||0),0);
-     const other=0,total=shipping+cod+rto+other;
+     const charges=calculateInvoiceCharges(all);
+     const shipping=charges.shipping,cod=charges.cod,rto=charges.rto,other=charges.other,total=charges.total;
      const delivered=all.filter(o=>o.status==="Delivered").length;
      const rtoCount=all.filter(o=>o.status==="RTO").length;
      const cancelled=all.filter(o=>o.status==="Cancelled").length;
@@ -2685,6 +2720,8 @@ async function loadAdmin(){
     populateInvoiceClients();
     await loadAdminInvoices();
     await loadBusinessPaymentSettings();
+    renderAdminDashboard();
+    showAdminPage("dashboard");
 }
 /* =========================================================
     ADMIN CLIENTS
@@ -3926,6 +3963,7 @@ async function loadAdminNotifications(){
         return;
     }
     const rows=data||[];
+    window.adminNotificationRows=rows;
     const fresh=rows.filter(x=>x.status==="New").length;
     const pending=rows.filter(x=>x.status==="Genz Booking Pending").length;
     const booked=rows.filter(x=>x.status==="Genz Booked").length;
@@ -3960,6 +3998,79 @@ async function loadAdminNotifications(){
           </div>
         </div>`;
     }).join("");
+}
+
+/* =========================================================
+   PROFESSIONAL DASHBOARD NAVIGATION
+========================================================= */
+function toggleAppMenu(id){
+    const el=$(id); if(!el)return;
+    document.querySelectorAll('.app-menu').forEach(m=>{if(m.id!==id)m.classList.add('hidden');});
+    el.classList.toggle('hidden');
+}
+function hideMenus(){document.querySelectorAll('.app-menu').forEach(m=>m.classList.add('hidden'));}
+function showClientPage(page){
+    hideMenus();
+    document.querySelectorAll('#clientArea .app-page').forEach(x=>x.classList.remove('active'));
+    ['clientProfileBox','bookingBox','ordersBox','clientCodBox','clientInvoiceBox','clientSupportBox'].forEach(id=>$(id)?.classList.add('hidden'));
+    if(page==='dashboard'){$('clientDashboardHome')?.classList.add('active');return;}
+    const map={profile:'clientProfileBox',booking:'bookingBox',shipments:'ordersBox',reports:'ordersBox',cod:'clientCodBox',invoices:'clientInvoiceBox',support:'clientSupportBox'};
+    const id=map[page]; if(id){$(id)?.classList.remove('hidden');}
+    if(page==='reports'){
+        $('ordersBox')?.classList.remove('hidden');
+        setTimeout(()=>document.getElementById('clientDailySummary')?.scrollIntoView({behavior:'smooth',block:'start'}),50);
+    }
+}
+function showAdminPage(page){
+    hideMenus();
+    document.querySelectorAll('#adminArea .admin-page').forEach(x=>x.classList.remove('active'));
+    const map={
+      dashboard:'adminDashboardHome',clients:'adminClientsCard',shipments:'adminShipmentsCard',
+      invoices:'adminInvoicesCard',cod:'adminCodCard',bank:'adminBankCard',support:'adminSupportBox'
+    };
+    const id=map[page]; if(id)$(id)?.classList.add('active');
+    if(page==='payments'){
+        $('adminInvoicesCard')?.classList.add('active');
+        setTimeout(()=>document.getElementById('adminInvoiceHistory')?.scrollIntoView({behavior:'smooth',block:'start'}),50);
+    }
+    if(page==='settings'){
+        $('adminStatusCard')?.classList.add('active');
+        setTimeout(()=>document.getElementById('adminStatusCard')?.scrollIntoView({behavior:'smooth',block:'start'}),50);
+    }
+}
+function renderClientDashboard(){
+    const rows=clientOrders||[];
+    const count=s=>rows.filter(o=>String(o.status||'').toLowerCase()===s).length;
+    const today=getIndiaDate();
+    const todayRows=rows.filter(o=>getOrderDate(o)===today);
+    const weekStart=mondayOf(today),weekRows=rows.filter(o=>getOrderDate(o)>=weekStart&&getOrderDate(o)<=today);
+    if($('clientDashboardNo'))$('clientDashboardNo').textContent=currentClient?.client_number||'—';
+    if($('clientDashDate'))$('clientDashDate').textContent=formatDateIndia(today);
+    if($('clientDashStats'))$('clientDashStats').innerHTML=[
+      ['Total Bookings',rows.length],['In Transit',count('picked up')+count('in transit')+count('out for delivery')],['Delivered',count('delivered')],['RTO',count('rto')]
+    ].map(x=>`<div class="dash-stat"><b>${x[0]}</b><strong>${x[1]}</strong></div>`).join('');
+    if($('clientDashboardSummary'))$('clientDashboardSummary').innerHTML=`<div class="dash-mini"><b>Today</b><strong>${todayRows.length} bookings</strong><span class="small">Delivered ${todayRows.filter(o=>o.status==='Delivered').length} · RTO ${todayRows.filter(o=>o.status==='RTO').length}</span></div><div class="dash-mini"><b>This Week</b><strong>${weekRows.length} bookings</strong><span class="small">Delivered ${weekRows.filter(o=>o.status==='Delivered').length} · RTO ${weekRows.filter(o=>o.status==='RTO').length}</span></div>`;
+}
+function renderAdminDashboard(){
+    const rows=adminBookingData||[], today=getIndiaDate();
+    const transit=rows.filter(o=>['Picked Up','In Transit','Out for Delivery'].includes(o.status)).length;
+    const newBookings=rows.filter(o=>o.status==='Booked').length;
+    const deliveredToday=rows.filter(o=>o.status==='Delivered'&&getOrderDate(o)===today).length;
+    const rto=rows.filter(o=>o.status==='RTO').length;
+    const newClients=(adminClientData||[]).filter(c=>String(c.created_at||'').slice(0,10)>=addDaysISO(today,-6)).length;
+    if($('adminDashStats'))$('adminDashStats').innerHTML=[['New Bookings',newBookings],['In Transit',transit],['Delivered Today',deliveredToday],['RTO',rto],['Clients',adminClientData.length],['New Clients (7D)',newClients],['Total Shipments',rows.length],['Open Support',adminSupportItems.filter(x=>String(x.status||'').toLowerCase()!=='resolved').length]].map(x=>`<div class="dash-stat"><b>${x[0]}</b><strong>${x[1]}</strong></div>`).join('');
+    const actions=[];
+    const newTasks=document.querySelectorAll('#adminNotifications .shipment-row');
+    const newTaskCount=[...newTasks].filter(x=>x.textContent.includes('New')).length;
+    if(newTaskCount)actions.push(['New booking / label task',newTaskCount,'notifications']);
+    if(newBookings)actions.push(['Pending bookings',newBookings,'shipments']);
+    const cancel=rows.filter(o=>o.status==='Cancellation Requested'||o.cancellation_requested===true).length;
+    if(cancel)actions.push(['Cancellation requests',cancel,'shipments']);
+    const pendingPay=[...document.querySelectorAll('#adminInvoiceHistory .notice')].filter(x=>x.textContent.includes('Client payment submitted')).length;
+    if(pendingPay)actions.push(['Payment submissions to verify',pendingPay,'payments']);
+    const pendingCod=(adminWeeklyCodSettlements||[]).filter(x=>x.status!=='Paid').length;
+    if(pendingCod)actions.push(['Weekly COD settlements pending',pendingCod,'cod']);
+    if($('adminActionRequired'))$('adminActionRequired').innerHTML=actions.length?actions.map(a=>`<div class="action-item"><b>${esc(a[0])}</b><span>${a[1]}</span></div>`).join(''):'<div class="notice">✓ No urgent action right now.</div>';
 }
 
 /* =========================================================
@@ -4052,6 +4163,19 @@ async function generateClientInvoice(){
  msg("invoiceMsg",`Draft ${invoiceNo} created. Client cannot see it until Admin verifies & sends it.` ,"ok");
  await loadAdminInvoices();return data;
 }
+async function recalculateDraftInvoice(id){
+ if(currentProfile?.role!=="admin")return;
+ const x=(adminInvoices||[]).find(v=>Number(v.id)===Number(id));
+ if(!x||String(x.approval_status||'Draft')!=="Draft")return alert("Only Draft invoices can be recalculated.");
+ const{data:rows,error}=await supabaseClient.from("bookings").select("*").eq("client_id",Number(x.client_id)).gte("order_date",x.period_start).lte("order_date",x.period_end);
+ if(error)return alert(error.message);
+ const c=calculateInvoiceCharges(rows||[]);
+ const delivered=(rows||[]).filter(o=>o.status==='Delivered').length,rto=(rows||[]).filter(o=>o.status==='RTO').length,cancelled=(rows||[]).filter(o=>o.status==='Cancelled').length;
+ const{error:ue}=await supabaseClient.from("client_invoices").update({total_orders:(rows||[]).length,delivered_count:delivered,rto_count:rto,cancelled_count:cancelled,shipping_charges:c.shipping,cod_charges:c.cod,rto_charges:c.rto,other_charges:c.other,total_amount:c.total}).eq("id",Number(id)).eq("approval_status","Draft");
+ if(ue)return alert(ue.message);
+ await loadAdminInvoices();
+ msg("invoiceMsg","Draft invoice recalculated from current shipment statuses.","ok");
+}
 async function loadAdminInvoices(){
  if(currentProfile?.role!=="admin")return;
  const[{data,error},{data:subs,error:se}]=await Promise.all([
@@ -4066,7 +4190,7 @@ async function loadAdminInvoices(){
   const approval=x.approval_status||"Sent";
   const draft=approval==="Draft";
   const sub=submissions.find(v=>Number(v.invoice_id)===Number(x.id)&&v.status==='Pending');
-  return `<div class="invoice-card"><div class="topbar"><div><b>${esc(x.invoice_no)}</b><div class="small">${esc(clientName(x.client_id))} · ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}</div></div><span class="badge ${draft?'status-pending':(x.payment_status==='Paid'?'status-paid':'status-pending')}" >${esc(approval)}${!draft?' · '+esc(x.payment_status||'Pending'):''}</span></div><p>Orders: ${Number(x.total_orders||0)} · Delivered: ${Number(x.delivered_count||0)} · RTO: ${Number(x.rto_count||0)} · Cancelled: ${Number(x.cancelled_count||0)}</p><p>Shipping: ${money(x.shipping_charges)} · COD/Handling: ${money(x.cod_charges)} · RTO: ${money(x.rto_charges)} · Other: ${money(x.other_charges)}</p><p><b>Total Payable: ${money(x.total_amount)}</b></p>${x.due_date?`<p class="small">Due: ${esc(formatDateIndia(x.due_date))}</p>`:''}${draft?`<div class="grid"><div><label>Shipping</label><input id="editShip${x.id}" type="number" step="0.01" value="${escAttr(x.shipping_charges||0)}"></div><div><label>COD/Handling</label><input id="editCod${x.id}" type="number" step="0.01" value="${escAttr(x.cod_charges||0)}"></div><div><label>RTO</label><input id="editRto${x.id}" type="number" step="0.01" value="${escAttr(x.rto_charges||0)}"></div><div><label>Other</label><input id="editOther${x.id}" type="number" step="0.01" value="${escAttr(x.other_charges||0)}"></div></div><button class="primary" type="button" onclick="saveInvoiceDraft(${x.id})">SAVE DRAFT CHANGES</button><button class="success" type="button" onclick="verifyAndSendInvoice(${x.id})">VERIFY & SEND TO CLIENT</button>`:`<button class="primary" type="button" onclick="printInvoice(${x.id})">PRINT / SAVE PDF</button>`}${sub?`<div class="notice">Client payment submitted: ${money(sub.amount)} · UTR: ${esc(sub.utr)} · ${esc(formatDateIndia(sub.payment_date))}</div><button class="success" type="button" onclick="verifyClientPayment(${sub.id},${x.id})">VERIFY PAYMENT & MARK PAID</button>`:(x.payment_status==='Paid'?`<span class="small">Paid ${x.paid_at?esc(formatDateIndia(String(x.paid_at).slice(0,10))):''} · UTR ${esc(x.payment_reference||'—')}</span>`:(!draft?`<button class="success" type="button" onclick="markInvoicePaid(${x.id})">MARK CLIENT PAYMENT RECEIVED</button>`:''))}</div>`;
+  return `<div class="invoice-card"><div class="topbar"><div><b>${esc(x.invoice_no)}</b><div class="small">${esc(clientName(x.client_id))} · ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}</div></div><span class="badge ${draft?'status-pending':(x.payment_status==='Paid'?'status-paid':'status-pending')}" >${esc(approval)}${!draft?' · '+esc(x.payment_status||'Pending'):''}</span></div><p>Orders: ${Number(x.total_orders||0)} · Delivered: ${Number(x.delivered_count||0)} · RTO: ${Number(x.rto_count||0)} · Cancelled: ${Number(x.cancelled_count||0)}</p><p>Shipping: ${money(x.shipping_charges)} · COD/Handling: ${money(x.cod_charges)} · RTO: ${money(x.rto_charges)} · Other: ${money(x.other_charges)}</p><p><b>Total Payable: ${money(x.total_amount)}</b></p>${x.due_date?`<p class="small">Due: ${esc(formatDateIndia(x.due_date))}</p>`:''}${draft?`<div class="grid"><div><label>Shipping</label><input id="editShip${x.id}" type="number" step="0.01" value="${escAttr(x.shipping_charges||0)}"></div><div><label>COD/Handling</label><input id="editCod${x.id}" type="number" step="0.01" value="${escAttr(x.cod_charges||0)}"></div><div><label>RTO</label><input id="editRto${x.id}" type="number" step="0.01" value="${escAttr(x.rto_charges||0)}"></div><div><label>Other</label><input id="editOther${x.id}" type="number" step="0.01" value="${escAttr(x.other_charges||0)}"></div></div><button class="secondary" type="button" onclick="recalculateDraftInvoice(${x.id})">RECALCULATE FROM SHIPMENTS</button><button class="primary" type="button" onclick="saveInvoiceDraft(${x.id})">SAVE DRAFT CHANGES</button><button class="success" type="button" onclick="verifyAndSendInvoice(${x.id})">VERIFY & SEND TO CLIENT</button>`:`<button class="primary" type="button" onclick="printInvoice(${x.id})">PRINT / SAVE PDF</button>`}${sub?`<div class="notice">Client payment submitted: ${money(sub.amount)} · UTR: ${esc(sub.utr)} · ${esc(formatDateIndia(sub.payment_date))}</div><button class="success" type="button" onclick="verifyClientPayment(${sub.id},${x.id})">VERIFY PAYMENT & MARK PAID</button>`:(x.payment_status==='Paid'?`<span class="small">Paid ${x.paid_at?esc(formatDateIndia(String(x.paid_at).slice(0,10))):''} · UTR ${esc(x.payment_reference||'—')}</span>`:(!draft?`<button class="success" type="button" onclick="markInvoicePaid(${x.id})">MARK CLIENT PAYMENT RECEIVED</button>`:''))}</div>`;
  }).join('');
 }
 async function saveInvoiceDraft(id){
