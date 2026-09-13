@@ -416,6 +416,15 @@ button:disabled{
 /* AUTH GATE: never expose client/admin content before authentication */
 #clientArea.hidden, #adminArea.hidden { display:none !important; }
 #clientArea:not(.hidden), #adminArea:not(.hidden) { display:block; }
+/* HARD LOGIN GATE: no client/admin/invoice controls can appear before authentication */
+body:not(.authenticated) #clientArea,
+body:not(.authenticated) #adminArea,
+body:not(.authenticated) #adminInvoicesCard,
+body:not(.authenticated) #adminCodCard,
+body:not(.authenticated) #adminBankCard { display:none !important; }
+body.authenticated #loginSection,
+body.authenticated #signupSection,
+body.authenticated #resetSection { display:none !important; }
 </style>
 </head>
 <body>
@@ -1060,6 +1069,7 @@ let adminWeeklyCodSettlements = [];
 /* INITIAL AUTH GATE
    Login screen is the only visible screen until Supabase auth succeeds. */
 function enforceLoggedOutView(){
+    document.body.classList.remove("authenticated");
     loginSection?.classList.remove("hidden");
     signupSection?.classList.add("hidden");
     resetSection?.classList.add("hidden");
@@ -1081,6 +1091,7 @@ function msg(id,text,type="notice"){
     AUTH UI
 ========================================================= */
 function showLogin(){
+    document.body.classList.remove("authenticated");
     stopAdminAutoRefresh();
     loginSection.classList.remove("hidden");
     signupSection.classList.add("hidden");
@@ -4251,6 +4262,7 @@ function printInvoice(id){const x=adminInvoices.find(v=>Number(v.id)===Number(id
     LOGOUT
 ========================================================= */
 async function logout(){
+    document.body.classList.remove("authenticated");
     stopAdminAutoRefresh();
     await supabaseClient
     .auth
