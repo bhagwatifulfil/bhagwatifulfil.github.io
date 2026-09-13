@@ -4139,11 +4139,29 @@ function populateClientPayInvoices(){const el=$("clientPayInvoice");if(!el)retur
 async function submitClientPayment(){if(currentProfile?.role!=="client")return;const invoiceId=Number($("clientPayInvoice")?.value),amount=Number($("clientPayAmount")?.value),date=$("clientPayDate")?.value,utr=$("clientPayUtr")?.value.trim();if(!invoiceId||!amount||!date||!utr)return msg("clientPayMsg","Select an invoice and enter payment date and UTR.","error");const invoice=(clientInvoices||[]).find(x=>Number(x.id)===invoiceId);if(!invoice)return msg("clientPayMsg","Invoice not found.","error");if(Number(invoice.total_amount)!==amount)return msg("clientPayMsg","Payment amount does not match invoice amount.","error");const{data:existing}=await supabaseClient.from("client_payment_submissions").select("id").eq("invoice_id",invoiceId).eq("status","Pending").maybeSingle();if(existing)return msg("clientPayMsg","Payment already submitted and is waiting for verification.","error");const btn=document.querySelector('button[onclick="submitClientPayment()"]');if(btn)btn.disabled=true;try{const{error}=await supabaseClient.from("client_payment_submissions").insert({client_id:Number(currentProfile.client_id),invoice_id:invoiceId,amount,payment_date:date,utr,status:"Pending"});if(error)return msg("clientPayMsg",error.message,"error");msg("clientPayMsg","Payment submitted. Admin will verify and mark the invoice Paid.","ok");$("clientPayUtr").value="";await loadClientPayments();}finally{if(btn)btn.disabled=false;}}
 function getSelectedInvoiceForQuickPay(){const id=Number($("clientPayInvoice")?.value);const inv=(clientInvoices||[]).find(x=>Number(x.id)===id);if(!inv||inv.payment_status==="Paid")return null;return inv;}
 function buildUpiUrl(inv){const s=businessPaymentSettings;if(!s?.upi_id)return null;const params=new URLSearchParams({pa:String(s.upi_id),pn:String(s.account_name||"BHAGWATI FULFIL"),am:Number(inv.total_amount||0).toFixed(2),cu:"INR",tn:String(inv.invoice_no||"Invoice Payment")});return "upi://pay?"+params.toString();}
-function launchPaymentScheme(scheme){const inv=getSelectedInvoiceForQuickPay();if(!inv)return msg("quickPayMsg","First select a pending invoice.","error");const upi=buildUpiUrl(inv);if(!upi)return msg("quickPayMsg","Admin has not added the business UPI ID yet.","error");const q=upi.split("?")[1];const url=scheme+"?"+q;window.location.href=url;}
-function payInvoiceUPI(){const inv=getSelectedInvoiceForQuickPay();if(!inv)return msg("quickPayMsg","First select a pending invoice.","error");const url=buildUpiUrl(inv);if(!url)return msg("quickPayMsg","Admin has not added the business UPI ID yet.","error");window.location.href=url;}
-function payInvoicePhonePe(){launchPaymentScheme("phonepe://pay");}
-function payInvoiceGooglePay(){launchPaymentScheme("tez://upi/pay");}
-function payInvoicePaytm(){launchPaymentScheme("paytmmp://pay");}
+function openQuickPay(inv,scheme,label){
+    if(!inv)return msg("quickPayMsg","First select a pending invoice.","error");
+    const upi=buildUpiUrl(inv);
+    if(!upi)return msg("quickPayMsg","Admin has not added the business UPI ID yet.","error");
+    const isMobile=/Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent||"");
+    if(isMobile){
+        const q=upi.split("?")[1];
+        const url=scheme+"?"+q;
+        msg("quickPayMsg",`Opening ${label} payment for ${money(inv.total_amount)}...`,"ok");
+        setTimeout(()=>{ window.location.href=url; },120);
+        return;
+    }
+    // Desktop/laptop cannot launch installed UPI apps. Show a QR that the client can scan from their phone.
+    const qr="https://api.qrserver.com/v1/create-qr-code/?size=260x260&data="+encodeURIComponent(upi);
+    const w=window.open("","_blank","width=420,height=560");
+    if(!w)return msg("quickPayMsg","Please allow pop-ups to open the payment QR.","error");
+    w.document.write(`<html><head><title>BHAGWATI FULFIL Payment</title><style>body{font-family:Arial;text-align:center;padding:24px;color:#111}img{width:260px;height:260px;border:1px solid #ddd;padding:8px;border-radius:12px}button{padding:10px 16px;border:0;border-radius:8px;background:#111;color:#fff;margin-top:12px;cursor:pointer}.amt{font-size:24px;font-weight:800;margin:12px}</style></head><body><h2>BHAGWATI FULFIL</h2><p>${label} Payment</p><div class="amt">${money(inv.total_amount)}</div><img src="${qr}" alt="UPI Payment QR"><p>Scan this QR using any UPI app on your phone.</p><p style="font-size:12px;word-break:break-all">UPI ID: ${esc(businessPaymentSettings?.upi_id||"")}</p><button onclick="window.close()">CLOSE</button></body></html>`);
+    w.document.close();
+}
+function payInvoiceUPI(){const inv=getSelectedInvoiceForQuickPay();if(!inv)return msg("quickPayMsg","First select a pending invoice.","error");openQuickPay(inv,"upi://pay","UPI");}
+function payInvoicePhonePe(){openQuickPay(getSelectedInvoiceForQuickPay(),"phonepe://pay","PhonePe");}
+function payInvoiceGooglePay(){openQuickPay(getSelectedInvoiceForQuickPay(),"tez://upi/pay","Google Pay");}
+function payInvoicePaytm(){openQuickPay(getSelectedInvoiceForQuickPay(),"paytmmp://pay","Paytm");}
 function showBankTransferDetails(){const s=businessPaymentSettings;if(!s)return msg("quickPayMsg","Bank details are not available yet.","error");msg("quickPayMsg",`Bank Transfer — ${s.bank_name||""} | A/C: ${s.account_number||""} | IFSC: ${s.ifsc||""}. Transfer the exact invoice amount, then enter UTR below and submit payment.`);}
 
 async function toggleClientLock(clientId,lock){if(currentProfile?.role!=="admin")return;const action=lock?"lock":"unlock";if(!confirm(`Are you sure you want to ${action} this client account?`))return;const{error}=await supabaseClient.from("clients").update({is_locked:lock}).eq("id",Number(clientId));if(error)return alert(error.message);await loadAdminClients();}
