@@ -452,10 +452,10 @@ body.auth-locked #adminArea * {
  <label>Password</label>
  <input id="loginPassword" type="password" placeholder="Enter password" autocomplete="new-password">
  <button type="button" class="primary" onclick="login()">LOGIN</button>
- <button class="secondary" onclick="showSignup()">
+ <button type="button" class="secondary" onclick="showSignup()">
   CREATE NEW CLIENT ACCOUNT
  </button>
- <button class="secondary" onclick="sendReset()">
+ <button type="button" class="secondary" onclick="sendReset()">
   FORGOT PASSWORD?
  </button>
 </section>
@@ -474,7 +474,7 @@ body.auth-locked #adminArea * {
  <button type="button" class="primary" onclick="signup()">
   CREATE ACCOUNT
  </button>
- <button class="secondary" onclick="showLogin()">
+ <button type="button" class="secondary" onclick="showLogin()">
   BACK TO LOGIN
  </button>
 </section>
@@ -486,10 +486,10 @@ body.auth-locked #adminArea * {
  <input id="newPassword" type="password" placeholder="Minimum 6 characters">
  <label>Confirm Password</label>
  <input id="confirmPassword" type="password" placeholder="Confirm password">
- <button class="success" onclick="updatePassword()">
+ <button type="button" class="success" onclick="updatePassword()">
   UPDATE PASSWORD
  </button>
- <button class="secondary" onclick="showLogin()">
+ <button type="button" class="secondary" onclick="showLogin()">
   BACK TO LOGIN
  </button>
 </section>
@@ -522,10 +522,10 @@ body.auth-locked #adminArea * {
   <div id="clientDashStats" class="dashboard-stats"></div>
   <div class="dashboard-section-title">Quick Access</div>
   <div class="quick-grid">
-   <button class="quick-card" onclick="showClientPage('booking')"><b>＋ New Booking</b><span>Create shipment</span></button>
-   <button class="quick-card" onclick="showClientPage('shipments')"><b>📦 My Shipments</b><span>Track orders</span></button>
-   <button class="quick-card" onclick="showClientPage('cod')"><b>💰 Weekly COD</b><span>Settlement status</span></button>
-   <button class="quick-card" onclick="showClientPage('invoices')"><b>🧾 Invoices</b><span>View & pay</span></button>
+   <button type="button" class="quick-card" onclick="showClientPage('booking')"><b>＋ New Booking</b><span>Create shipment</span></button>
+   <button type="button" class="quick-card" onclick="showClientPage('shipments')"><b>📦 My Shipments</b><span>Track orders</span></button>
+   <button type="button" class="quick-card" onclick="showClientPage('cod')"><b>💰 Weekly COD</b><span>Settlement status</span></button>
+   <button type="button" class="quick-card" onclick="showClientPage('invoices')"><b>🧾 Invoices</b><span>View & pay</span></button>
   </div>
   <div id="clientDashboardSummary" class="dashboard-mini-grid"></div>
  </div>
@@ -707,7 +707,7 @@ body.auth-locked #adminArea * {
  <button id="bookShipmentBtn" type="button" class="success" onclick="bookShipment()">
   BOOK SHIPMENT
  </button>
- <button class="secondary" onclick="clearBooking()">
+ <button type="button" class="secondary" onclick="clearBooking()">
   CLEAR
  </button>
 </div>
@@ -731,10 +731,11 @@ body.auth-locked #adminArea * {
 </div>
 <!-- CLIENT HISTORY -->
 <div id="ordersBox" class="card hidden">
- <h2>My Shipment History</h2>
+ <div class="dashboard-heading"><h2>My Shipment History</h2><button type="button" class="secondary mini-btn" id="clientShipmentRefreshBtn" onclick="refreshClientShipments()">↻ REFRESH STATUS</button></div>
  <div class="notice">
   Shipment history is permanent. Delivered and Cancelled shipments remain visible.
  </div>
+ <div id="clientShipmentMsg"></div>
  <div id="clientDailySummary" class="day-summary"></div>
  <div class="filterbar">
   <div>
@@ -819,7 +820,7 @@ body.auth-locked #adminArea * {
   <div id="adminDashStats" class="dashboard-stats admin-stats"></div>
   <div class="dashboard-section-title">ACTION REQUIRED</div><div id="adminActionRequired" class="action-list"></div>
   <div class="dashboard-section-title">Quick Access</div>
-  <div class="quick-grid"><button class="quick-card" onclick="showAdminPage('shipments')"><b>📦 All Shipments</b><span>Bookings & status</span></button><button class="quick-card" onclick="showAdminPage('invoices')"><b>🧾 Invoices</b><span>Generate & verify</span></button><button class="quick-card" onclick="showAdminPage('cod')"><b>💰 Weekly COD</b><span>Create & pay</span></button><button class="quick-card" onclick="showAdminPage('payments')"><b>💳 Payments</b><span>Verify submissions</span></button></div>
+  <div class="quick-grid"><button type="button" class="quick-card" onclick="showAdminPage('shipments')"><b>📦 All Shipments</b><span>Bookings & status</span></button><button type="button" class="quick-card" onclick="showAdminPage('invoices')"><b>🧾 Invoices</b><span>Generate & verify</span></button><button type="button" class="quick-card" onclick="showAdminPage('cod')"><b>💰 Weekly COD</b><span>Create & pay</span></button><button type="button" class="quick-card" onclick="showAdminPage('payments')"><b>💳 Payments</b><span>Verify submissions</span></button></div>
  </div>
 <!-- NEW BOOKING / CLIENT NOTIFICATION QUEUE -->
 <div class="card admin-page" id="adminNotificationCard">
@@ -828,7 +829,7 @@ body.auth-locked #adminArea * {
    <h2>🔔 New Booking Control</h2>
    <div class="small">Check every new booking before booking it with Genz.</div>
   </div>
-  <button class="secondary" onclick="loadAdminNotifications()">REFRESH</button>
+  <button type="button" class="secondary" onclick="loadAdminNotifications()">REFRESH</button>
  </div>
  <div id="adminNotificationSummary" class="settlement-grid"></div>
  <div id="adminNotifications">Loading...</div>
@@ -2272,6 +2273,23 @@ function clientBadge(
     `;
 }
 /* =========================================================
+     CLIENT SHIPMENT STATUS REFRESH
+========================================================= */
+async function refreshClientShipments(){
+    if(currentProfile?.role!=="client" || !currentProfile?.client_id) return;
+    const btn=$("clientShipmentRefreshBtn");
+    const old=btn?.textContent || "↻ REFRESH STATUS";
+    try{
+        if(btn){btn.disabled=true;btn.textContent="↻ REFRESHING...";}
+        await loadOrders();
+        msg("clientShipmentMsg","Shipment status refreshed.","ok");
+    }catch(e){
+        msg("clientShipmentMsg",e?.message||"Unable to refresh shipment status.","error");
+    }finally{
+        if(btn){btn.disabled=false;btn.textContent=old;}
+    }
+}
+/* =========================================================
      CLIENT HISTORY
 ========================================================= */
 function renderClientOrders(){
@@ -2446,7 +2464,7 @@ if(o.tracking_link){
 }
 if(o.label_file_path){
     links += `
-     <button
+     <button type="button"
          class="info"
          onclick="downloadLabel(${o.id})"
      >
@@ -2504,7 +2522,7 @@ return `
     </div>
  </div>
  <div>
-    <button
+    <button type="button"
      class="secondary"
      onclick="toggleDetails('client-${o.id}')"
     >
@@ -2625,7 +2643,7 @@ return `
  ${
      canCancel
      ?
-     `<button
+     `<button type="button"
          class="danger"
          onclick="requestCancellation(${o.id})"
      >
@@ -2902,7 +2920,7 @@ adminClientData
  <span class="status ${c.bank_edit_allowed ? "status-pending" : "status-paid"}">Bank Edit: ${c.bank_edit_allowed ? "ALLOWED" : "LOCKED"}</span>
  <button class="secondary" type="button" onclick="toggleClientBankEdit(${Number(c.id)},${!c.bank_edit_allowed})">${c.bank_edit_allowed ? "REVOKE BANK EDIT" : "ALLOW BANK EDIT"}</button>
 </div>
-<button
+<button type="button"
  class="client-bank-toggle"
  onclick="toggleBankDetails('bank-${c.id}')"
 >
@@ -3279,7 +3297,7 @@ return `
     </div>
  </div>
  <div>
-    <button
+    <button type="button"
      class="secondary"
      onclick="toggleDetails('admin-${o.id}')"
     >
@@ -3497,8 +3515,14 @@ return `
  <input
      id="labelFile-${o.id}"
      type="file"
-     accept="application/pdf"
+     accept=".pdf,application/pdf"
+     onclick="this.value=''"
+     onchange="handleLabelSelect(${o.id}, this)"
+     style="width:100%;padding:8px;cursor:pointer"
  >
+ <div id="labelSelected-${o.id}" class="small" style="margin-top:6px">
+     No new PDF selected.
+ </div>
  ${
      o.label_file_path
      ?
@@ -3517,6 +3541,7 @@ return `
  }
 </div>
 <button
+ type="button"
  class="success"
  onclick="updateBooking(${o.id})"
 >
@@ -3526,13 +3551,13 @@ ${
  o.cancellation_requested
  ?
  `
-     <button
+     <button type="button"
          class="danger"
                     onclick="approveCancellation(${o.id})"
                    >
                     APPROVE CANCELLATION
                    </button>
-                   <button
+                   <button type="button"
                     class="secondary"
                     onclick="rejectCancellation(${o.id})"
                    >
@@ -3639,7 +3664,7 @@ pending.map(
                  "Not specified"
               )}
              </p>
-             <button
+             <button type="button"
               class="danger"
               onclick="focusAdminOrder(${o.id})"
              >
@@ -3670,6 +3695,34 @@ function focusAdminOrder(id){
     }
 }
 /* =========================================================
+    SHIPPING LABEL FILE PICKER
+========================================================= */
+function handleLabelSelect(id, input){
+    const out = $(`labelSelected-${id}`);
+    const file = input?.files?.[0] || null;
+    if(!out) return;
+    if(!file){
+        out.textContent = "No new PDF selected.";
+        return;
+    }
+    const name = String(file.name || "");
+    const isPdf =
+        String(file.type || "").toLowerCase() === "application/pdf" ||
+        /\.pdf$/i.test(name);
+    if(!isPdf){
+        input.value = "";
+        out.textContent = "❌ Please choose a PDF shipping label.";
+        return;
+    }
+    if(file.size > 50 * 1024 * 1024){
+        input.value = "";
+        out.textContent = "❌ PDF is larger than 50 MB.";
+        return;
+    }
+    const mb = (file.size / (1024*1024)).toFixed(2);
+    out.textContent = `✅ Selected: ${name} (${mb} MB) — press SAVE UPDATE to upload.`;
+}
+/* =========================================================
     UPLOAD LABEL PDF
 ========================================================= */
 async function uploadLabelFile(
@@ -3678,9 +3731,10 @@ async function uploadLabelFile(
 ){
  if(!file)
      return null;
- if(
-     file.type!=="application/pdf"
- ){
+ const isPdf =
+     String(file.type || "").toLowerCase()==="application/pdf" ||
+     /\.pdf$/i.test(String(file.name || ""));
+ if(!isPdf){
      throw Error(
        "Only PDF shipping labels are allowed."
      );
@@ -3716,7 +3770,8 @@ async function uploadLabelFile(
      file,
      {
          upsert:true,
-         contentType:"application/pdf"
+         contentType:"application/pdf",
+         cacheControl:"3600"
      }
     );
     if(error)
@@ -3727,108 +3782,96 @@ async function uploadLabelFile(
     UPDATE BOOKING
 ========================================================= */
 async function updateBooking(id){
-    const o =
-    adminBookingData.find(
-     x =>
-     Number(x.id)===Number(id)
-    );
-    const status =
-    $(`status-${id}`).value;
-    const file =
-    $(`labelFile-${id}`)
-    ?.files?.[0];
+    const o = adminBookingData.find(x => Number(x.id) === Number(id));
+    if(!o){
+        return msg("adminMsg","Booking not found. Please refresh the dashboard and try again.","error");
+    }
+
+    const statusEl = $("status-"+id);
+    const trackingEl = $("tracking-"+id);
+    const trackingLinkEl = $("trackingLink-"+id);
+    const fileEl = $("labelFile-"+id);
+    const btn = document.querySelector(`button[onclick="updateBooking(${id})"]`);
+
+    if(!statusEl || !trackingEl || !trackingLinkEl){
+        return msg("adminMsg","Update controls are missing. Please refresh the dashboard and try again.","error");
+    }
+
+    const status = statusEl.value;
+    const file = fileEl?.files?.[0] || null;
+    const oldText = btn?.textContent || "SAVE UPDATE";
+
     try{
-     let fp =
-     o?.label_file_path ||
-     null;
-     if(file){
-         msg(
-          "adminMsg",
-      "Uploading shipping label PDF..."
-    );
-    fp =
-    await uploadLabelFile(
-      id,
-      file
-    );
-}
-let finalStatus =
-status;
-let cancellationRequested =
-o?.cancellation_requested ||
-false;
-if(
-    status==="Cancellation Requested"
-){
-    cancellationRequested =
-    true;
-    finalStatus =
-    "Cancellation Requested";
-}
-const updates = {
-    status:
-    finalStatus,
-    cancellation_requested:
-    cancellationRequested,
-    tracking_number:
-    $(`tracking-${id}`)
-    .value
-    .trim(),
-    tracking_link:
-    $(`trackingLink-${id}`)
-    .value
-    .trim(),
-    label_file_path:
-    fp,
-    delivered_at:
-    finalStatus==="Delivered"
-    ?
-    (
-        o?.delivered_at ||
-        new Date().toISOString()
-    )
-    :
-    null
-};
-if(
-    finalStatus==="Cancelled"
-){
-    updates.cancelled_at =
-    o?.cancelled_at ||
-    new Date().toISOString();
-    updates.cancellation_requested =
-    false;
-}
-const {
-    error
-}=
-await supabaseClient
-.from("bookings")
-.update(updates)
-.eq(
-    "id",
-    id
-);
-if(error)
-    throw error;
-await syncCodSettlementForBooking(id, finalStatus);
-msg(
-    "adminMsg",
-    "Booking updated successfully.",
-    "ok"
-);
+        if(btn){
+            btn.disabled = true;
+            btn.textContent = "SAVING...";
+        }
+
+        let fp = o.label_file_path || null;
+        if(file){
+            const isPdf =
+                String(file.type || "").toLowerCase() === "application/pdf" ||
+                /\.pdf$/i.test(String(file.name || ""));
+            if(!isPdf){
+                throw new Error("Shipping label must be a PDF file.");
+            }
+            if(file.size > 50 * 1024 * 1024){
+                throw new Error("Shipping label PDF must be 50 MB or smaller.");
+            }
+            msg("adminMsg","Uploading shipping label PDF...","notice");
+            fp = await uploadLabelFile(id,file);
+        }
+
+        let finalStatus = status;
+        let cancellationRequested = !!o.cancellation_requested;
+        if(status === "Cancellation Requested"){
+            cancellationRequested = true;
+            finalStatus = "Cancellation Requested";
+        }
+
+        const updates = {
+            status: finalStatus,
+            cancellation_requested: cancellationRequested,
+            tracking_number: trackingEl.value.trim(),
+            tracking_link: trackingLinkEl.value.trim(),
+            label_file_path: fp,
+            delivered_at: finalStatus === "Delivered"
+                ? (o.delivered_at || new Date().toISOString())
+                : null
+        };
+
+        if(finalStatus === "Cancelled"){
+            updates.cancelled_at = o.cancelled_at || new Date().toISOString();
+            updates.cancellation_requested = false;
+        }
+
+        const {error} = await supabaseClient
+            .from("bookings")
+            .update(updates)
+            .eq("id", id);
+
+        if(error) throw error;
+
+        try{
+            await syncCodSettlementForBooking(id, finalStatus);
+        }catch(settlementError){
+            console.warn("COD settlement sync warning:", settlementError);
+        }
+
+        msg("adminMsg","Booking status/details saved successfully. Client can now see the updated status.","ok");
         await loadAdminBookings();
         await loadAdminStats();
-    }
-    catch(e){
-        msg(
-         "adminMsg",
-         e.message ||
-         String(e),
-         "error"
-        );
+    }catch(e){
+        console.error("Booking update failed:",e);
+        msg("adminMsg",e?.message || "Unable to save booking update.","error");
+    }finally{
+        if(btn){
+            btn.disabled = false;
+            btn.textContent = oldText;
+        }
     }
 }
+
 /* =========================================================
     APPROVE CANCELLATION
 ========================================================= */
@@ -4075,10 +4118,10 @@ async function loadAdminNotifications(){
             Pickup ${esc(t.pickup_pincode||"")} → Delivery ${esc(t.delivery_pincode||"")}
           </div>
           <div class="actions" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-            ${isNew ? `<button onclick="checkNewBooking(${Number(t.id)})">✅ CHECK</button>` : ""}
-            ${isNew ? `<button class="secondary" onclick='sendBookingWhatsApp(${JSON.stringify(t).replace(/'/g,"&#39;")})'>📲 WhatsApp</button>` : ""}
-            ${isPending ? `<button onclick="markGenzBooked(${Number(t.id)})">📦 GENZ BOOKED</button>` : ""}
-            ${isBooked ? `<button onclick="markAwbAdded(${Number(t.id)})">🏷️ AWB ADDED</button>` : ""}
+            ${isNew ? `<button type="button" onclick="checkNewBooking(${Number(t.id)})">✅ CHECK</button>` : ""}
+            ${isNew ? `<button type="button" class="secondary" onclick='sendBookingWhatsApp(${JSON.stringify(t).replace(/'/g,"&#39;")})'>📲 WhatsApp</button>` : ""}
+            ${isPending ? `<button type="button" onclick="markGenzBooked(${Number(t.id)})">📦 GENZ BOOKED</button>` : ""}
+            ${isBooked ? `<button type="button" onclick="markAwbAdded(${Number(t.id)})">🏷️ AWB ADDED</button>` : ""}
           </div>
         </div>`;
     }).join("");
@@ -4258,7 +4301,7 @@ function openQuickPay(inv,scheme,label){
     const qr="https://api.qrserver.com/v1/create-qr-code/?size=260x260&data="+encodeURIComponent(upi);
     const w=window.open("","_blank","width=420,height=560");
     if(!w)return msg("quickPayMsg","Please allow pop-ups to open the payment QR.","error");
-    w.document.write(`<html><head><title>BHAGWATI FULFIL Payment</title><style>body{font-family:Arial;text-align:center;padding:24px;color:#111}img{width:260px;height:260px;border:1px solid #ddd;padding:8px;border-radius:12px}button{padding:10px 16px;border:0;border-radius:8px;background:#111;color:#fff;margin-top:12px;cursor:pointer}.amt{font-size:24px;font-weight:800;margin:12px}</style></head><body><h2>BHAGWATI FULFIL</h2><p>${label} Payment</p><div class="amt">${money(inv.total_amount)}</div><img src="${qr}" alt="UPI Payment QR"><p>Scan this QR using any UPI app on your phone.</p><p style="font-size:12px;word-break:break-all">UPI ID: ${esc(businessPaymentSettings?.upi_id||"")}</p><button onclick="window.close()">CLOSE</button></body></html>`);
+    w.document.write(`<html><head><title>BHAGWATI FULFIL Payment</title><style>body{font-family:Arial;text-align:center;padding:24px;color:#111}img{width:260px;height:260px;border:1px solid #ddd;padding:8px;border-radius:12px}button{padding:10px 16px;border:0;border-radius:8px;background:#111;color:#fff;margin-top:12px;cursor:pointer}.amt{font-size:24px;font-weight:800;margin:12px}</style></head><body><h2>BHAGWATI FULFIL</h2><p>${label} Payment</p><div class="amt">${money(inv.total_amount)}</div><img src="${qr}" alt="UPI Payment QR"><p>Scan this QR using any UPI app on your phone.</p><p style="font-size:12px;word-break:break-all">UPI ID: ${esc(businessPaymentSettings?.upi_id||"")}</p><button type="button" onclick="window.close()">CLOSE</button></body></html>`);
     w.document.close();
 }
 function payInvoiceUPI(){const inv=getSelectedInvoiceForQuickPay();if(!inv)return msg("quickPayMsg","First select a pending invoice.","error");openQuickPay(inv,"upi://pay","UPI");}
@@ -4299,7 +4342,7 @@ function printClientInvoice(id){
     if(!x || Number(x.client_id)!==Number(currentProfile.client_id))return alert("Invoice not found.");
     const c=currentClient||{};
     const b=businessPaymentSettings||{};
-    const html=`<!doctype html><html><head><title>${esc(x.invoice_no)}</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#111;max-width:850px;margin:auto}h1{margin-bottom:4px}h2{margin-top:0}.box{border:1px solid #ddd;padding:14px;border-radius:8px;margin:14px 0}table{width:100%;border-collapse:collapse;margin-top:20px}td,th{border:1px solid #ddd;padding:10px;text-align:left}.right{text-align:right}.total{font-size:20px;font-weight:700}.muted{color:#666;font-size:13px}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly Service Invoice</h2><div class="box"><b>BILL TO</b><br>${esc(c.Client_name||"")}<br>Client No: ${esc(c.client_number||"")}<br>Email: ${esc(c.email||"")}<br>Mobile: ${esc(c.mobile||"")}</div><p><b>Invoice:</b> ${esc(x.invoice_no)}<br><b>Service Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}<br><b>Due Date:</b> ${esc(formatDateIndia(x.due_date||""))}</p><table><tr><th>Particular</th><th class="right">Amount</th></tr><tr><td>Shipping Charges</td><td class="right">${money(x.shipping_charges)}</td></tr><tr><td>COD Collection / Handling (₹25 per COD parcel)</td><td class="right">${money(x.cod_charges)}</td></tr><tr><td>RTO Charges</td><td class="right">${money(x.rto_charges)}</td></tr><tr><td>Other Charges</td><td class="right">${money(x.other_charges)}</td></tr><tr><th class="total">TOTAL SERVICE PAYABLE</th><th class="right total">${money(x.total_amount)}</th></tr></table><p><b>Orders:</b> ${Number(x.total_orders||0)} &nbsp; <b>Delivered:</b> ${Number(x.delivered_count||0)} &nbsp; <b>RTO:</b> ${Number(x.rto_count||0)} &nbsp; <b>Cancelled:</b> ${Number(x.cancelled_count||0)}</p><div class="box"><b>PAYMENT TO BHAGWATI FULFIL</b><br>Account Name: ${esc(b.account_name||"")}<br>Bank: ${esc(b.bank_name||"")}<br>A/C No.: ${esc(b.account_number||"")}<br>IFSC: ${esc(b.ifsc||"")}<br>UPI ID: ${esc(b.upi_id||"")}</div><div class="box"><b>CLIENT COD SETTLEMENT / PAYOUT DETAILS</b><br>Account Holder: ${esc(c.bank_holder_name||"")}<br>A/C No.: ${esc(c.account_number||"")}<br>IFSC: ${esc(c.ifsc||"")}<br>UPI ID: ${esc(c.upi_id||"")}</div><p class="muted">Prepaid parcels have ₹0 COD handling. COD handling is ₹25 per delivered COD parcel. No GST Charged.</p><div style="margin-top:22px;text-align:center"><button onclick="window.print()" style="padding:10px 18px;border:0;border-radius:8px;background:#111827;color:#fff;cursor:pointer">PRINT / SAVE PDF</button> <button onclick="window.close()" style="padding:10px 18px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#111;cursor:pointer">← RETURN TO BHAGWATI FULFIL</button></div></body></html>`;
+    const html=`<!doctype html><html><head><title>${esc(x.invoice_no)}</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#111;max-width:850px;margin:auto}h1{margin-bottom:4px}h2{margin-top:0}.box{border:1px solid #ddd;padding:14px;border-radius:8px;margin:14px 0}table{width:100%;border-collapse:collapse;margin-top:20px}td,th{border:1px solid #ddd;padding:10px;text-align:left}.right{text-align:right}.total{font-size:20px;font-weight:700}.muted{color:#666;font-size:13px}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly Service Invoice</h2><div class="box"><b>BILL TO</b><br>${esc(c.Client_name||"")}<br>Client No: ${esc(c.client_number||"")}<br>Email: ${esc(c.email||"")}<br>Mobile: ${esc(c.mobile||"")}</div><p><b>Invoice:</b> ${esc(x.invoice_no)}<br><b>Service Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}<br><b>Due Date:</b> ${esc(formatDateIndia(x.due_date||""))}</p><table><tr><th>Particular</th><th class="right">Amount</th></tr><tr><td>Shipping Charges</td><td class="right">${money(x.shipping_charges)}</td></tr><tr><td>COD Collection / Handling (₹25 per COD parcel)</td><td class="right">${money(x.cod_charges)}</td></tr><tr><td>RTO Charges</td><td class="right">${money(x.rto_charges)}</td></tr><tr><td>Other Charges</td><td class="right">${money(x.other_charges)}</td></tr><tr><th class="total">TOTAL SERVICE PAYABLE</th><th class="right total">${money(x.total_amount)}</th></tr></table><p><b>Orders:</b> ${Number(x.total_orders||0)} &nbsp; <b>Delivered:</b> ${Number(x.delivered_count||0)} &nbsp; <b>RTO:</b> ${Number(x.rto_count||0)} &nbsp; <b>Cancelled:</b> ${Number(x.cancelled_count||0)}</p><div class="box"><b>PAYMENT TO BHAGWATI FULFIL</b><br>Account Name: ${esc(b.account_name||"")}<br>Bank: ${esc(b.bank_name||"")}<br>A/C No.: ${esc(b.account_number||"")}<br>IFSC: ${esc(b.ifsc||"")}<br>UPI ID: ${esc(b.upi_id||"")}</div><div class="box"><b>CLIENT COD SETTLEMENT / PAYOUT DETAILS</b><br>Account Holder: ${esc(c.bank_holder_name||"")}<br>A/C No.: ${esc(c.account_number||"")}<br>IFSC: ${esc(c.ifsc||"")}<br>UPI ID: ${esc(c.upi_id||"")}</div><p class="muted">Prepaid parcels have ₹0 COD handling. COD handling is ₹25 per delivered COD parcel. No GST Charged.</p><div style="margin-top:22px;text-align:center"><button type="button" onclick="window.print()" style="padding:10px 18px;border:0;border-radius:8px;background:#111827;color:#fff;cursor:pointer">PRINT / SAVE PDF</button> <button type="button" onclick="window.close()" style="padding:10px 18px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#111;cursor:pointer">← RETURN TO BHAGWATI FULFIL</button></div></body></html>`;
     openInvoicePrintWindow(html);
 }
 
@@ -4318,7 +4361,7 @@ function printWeeklyCodSettlement(id, side="admin"){
     if(!isClient && currentProfile?.role!=="admin")return;
     const c=isClient?(currentClient||{}):(adminClientData||[]).find(v=>Number(v.id)===Number(x.client_id))||{};
     const b=businessPaymentSettings||{};
-    const html=`<!doctype html><html><head><title>COD Settlement</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#111;max-width:850px;margin:auto}h1{margin-bottom:4px}h2{margin-top:0}.box{border:1px solid #ddd;padding:14px;border-radius:8px;margin:14px 0}table{width:100%;border-collapse:collapse;margin-top:20px}td,th{border:1px solid #ddd;padding:10px;text-align:left}.right{text-align:right}.total{font-size:20px;font-weight:700}.muted{color:#666;font-size:13px}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly COD Settlement / Payout</h2><div class="box"><b>PAY TO CLIENT</b><br>Client: ${esc(c.Client_name||clientName(x.client_id)||"")}<br>Client No: ${esc(c.client_number||clientNo(x.client_id)||"")}</div><p><b>Settlement Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}<br><b>Status:</b> ${esc(x.status||"Pending")}<br><b>Settlement ID:</b> ${esc(x.id)}</p><table><tr><th>Particular</th><th class="right">Amount</th></tr><tr><td>Delivered COD Parcels</td><td class="right">${Number(x.parcel_count||0)}</td></tr><tr><td>Gross COD Collected</td><td class="right">${money(x.total_cod_amount)}</td></tr><tr><th class="total">TOTAL PAYOUT TO CLIENT</th><th class="right total">${money(x.total_cod_amount)}</th></tr></table><div class="box"><b>CLIENT BANK / UPI DETAILS</b><br>Account Holder: ${esc(c.bank_holder_name||"")}<br>A/C No.: ${esc(c.account_number||"")}<br>IFSC: ${esc(c.ifsc||"")}<br>UPI ID: ${esc(c.upi_id||"")}</div><div class="box"><b>SETTLEMENT FROM BHAGWATI FULFIL</b><br>Account Name: ${esc(b.account_name||"")}<br>Bank: ${esc(b.bank_name||"")}<br>A/C No.: ${esc(b.account_number||"")}<br>IFSC: ${esc(b.ifsc||"")}<br>UPI ID: ${esc(b.upi_id||"")}</div><p class="muted">COD settlement is separate from the weekly BHAGWATI FULFIL service invoice. COD handling charges are billed separately on the service invoice. No GST Charged.</p><div style="margin-top:22px;text-align:center"><button onclick="window.print()" style="padding:10px 18px;border:0;border-radius:8px;background:#111827;color:#fff;cursor:pointer">PRINT / SAVE PDF</button> <button onclick="window.close()" style="padding:10px 18px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#111;cursor:pointer">← RETURN TO BHAGWATI FULFIL</button></div></body></html>`;
+    const html=`<!doctype html><html><head><title>COD Settlement</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#111;max-width:850px;margin:auto}h1{margin-bottom:4px}h2{margin-top:0}.box{border:1px solid #ddd;padding:14px;border-radius:8px;margin:14px 0}table{width:100%;border-collapse:collapse;margin-top:20px}td,th{border:1px solid #ddd;padding:10px;text-align:left}.right{text-align:right}.total{font-size:20px;font-weight:700}.muted{color:#666;font-size:13px}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly COD Settlement / Payout</h2><div class="box"><b>PAY TO CLIENT</b><br>Client: ${esc(c.Client_name||clientName(x.client_id)||"")}<br>Client No: ${esc(c.client_number||clientNo(x.client_id)||"")}</div><p><b>Settlement Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}<br><b>Status:</b> ${esc(x.status||"Pending")}<br><b>Settlement ID:</b> ${esc(x.id)}</p><table><tr><th>Particular</th><th class="right">Amount</th></tr><tr><td>Delivered COD Parcels</td><td class="right">${Number(x.parcel_count||0)}</td></tr><tr><td>Gross COD Collected</td><td class="right">${money(x.total_cod_amount)}</td></tr><tr><th class="total">TOTAL PAYOUT TO CLIENT</th><th class="right total">${money(x.total_cod_amount)}</th></tr></table><div class="box"><b>CLIENT BANK / UPI DETAILS</b><br>Account Holder: ${esc(c.bank_holder_name||"")}<br>A/C No.: ${esc(c.account_number||"")}<br>IFSC: ${esc(c.ifsc||"")}<br>UPI ID: ${esc(c.upi_id||"")}</div><div class="box"><b>SETTLEMENT FROM BHAGWATI FULFIL</b><br>Account Name: ${esc(b.account_name||"")}<br>Bank: ${esc(b.bank_name||"")}<br>A/C No.: ${esc(b.account_number||"")}<br>IFSC: ${esc(b.ifsc||"")}<br>UPI ID: ${esc(b.upi_id||"")}</div><p class="muted">COD settlement is separate from the weekly BHAGWATI FULFIL service invoice. COD handling charges are billed separately on the service invoice. No GST Charged.</p><div style="margin-top:22px;text-align:center"><button type="button" onclick="window.print()" style="padding:10px 18px;border:0;border-radius:8px;background:#111827;color:#fff;cursor:pointer">PRINT / SAVE PDF</button> <button type="button" onclick="window.close()" style="padding:10px 18px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#111;cursor:pointer">← RETURN TO BHAGWATI FULFIL</button></div></body></html>`;
     openInvoicePrintWindow(html);
 }
 
@@ -4384,7 +4427,7 @@ async function verifyAndSendInvoice(id){
 
 async function verifyClientPayment(submissionId,invoiceId){if(currentProfile?.role!=="admin")return;const{data:sub,error:fe}=await supabaseClient.from("client_payment_submissions").select("*").eq("id",submissionId).single();if(fe||!sub)return alert(fe?.message||"Payment submission not found.");if(Number(sub.invoice_id)!==Number(invoiceId))return alert("Payment submission does not match this invoice.");const{error}=await supabaseClient.from("client_invoices").update({payment_status:"Paid",paid_at:new Date().toISOString(),payment_reference:sub.utr}).eq("id",invoiceId);if(error)return alert(error.message);const{error:se}=await supabaseClient.from("client_payment_submissions").update({status:"Verified",verified_at:new Date().toISOString(),verified_by:currentUser.id}).eq("id",submissionId);if(se)return alert(se.message);await loadAdminInvoices();}
 async function markInvoicePaid(id){if(currentProfile?.role!=="admin")return;const ref=prompt("Client invoice payment UTR / reference:","");if(ref===null)return;const{error}=await supabaseClient.from("client_invoices").update({payment_status:"Paid",paid_at:new Date().toISOString(),payment_reference:ref.trim()}).eq("id",id);if(error)return alert(error.message);await loadAdminInvoices();}
-function printInvoice(id){const x=adminInvoices.find(v=>Number(v.id)===Number(id));if(!x)return;const c=(adminClientData||[]).find(v=>Number(v.id)===Number(x.client_id))||{};const b=businessPaymentSettings||{};const html=`<!doctype html><html><head><title>${esc(x.invoice_no)}</title><style>body{font-family:Arial;padding:30px;color:#111;max-width:850px;margin:auto}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:9px;text-align:left}.box{border:1px solid #ddd;padding:12px;border-radius:8px;margin:14px 0}.right{text-align:right}.total{font-size:20px;font-weight:700}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly Service Invoice</h2><div class="box"><b>BILL TO</b><br>${esc(c.Client_name||clientName(x.client_id))}<br>Client No: ${esc(c.client_number||"")}<br>Email: ${esc(c.email||"")}<br>Mobile: ${esc(c.mobile||"")}</div><p><b>Invoice:</b> ${esc(x.invoice_no)}<br><b>Service Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}<br><b>Due Date:</b> ${esc(formatDateIndia(x.due_date||""))}</p><table><tr><th>Particular</th><th class="right">Amount</th></tr><tr><td>Shipping Charges</td><td class="right">${money(x.shipping_charges)}</td></tr><tr><td>COD Collection / Handling (₹25 per COD parcel)</td><td class="right">${money(x.cod_charges)}</td></tr><tr><td>RTO Charges</td><td class="right">${money(x.rto_charges)}</td></tr><tr><td>Other Charges</td><td class="right">${money(x.other_charges)}</td></tr><tr><th class="total">TOTAL SERVICE PAYABLE</th><th class="right total">${money(x.total_amount)}</th></tr></table><p>Orders: ${Number(x.total_orders||0)} · Delivered: ${Number(x.delivered_count||0)} · RTO: ${Number(x.rto_count||0)} · Cancelled: ${Number(x.cancelled_count||0)}</p><div class="box"><b>PAYMENT TO BHAGWATI FULFIL</b><br>Account Name: ${esc(b.account_name||"")}<br>Bank: ${esc(b.bank_name||"")}<br>A/C No.: ${esc(b.account_number||"")}<br>IFSC: ${esc(b.ifsc||"")}<br>UPI ID: ${esc(b.upi_id||"")}</div><div class="box"><b>CLIENT COD SETTLEMENT / PAYOUT DETAILS</b><br>Account Holder: ${esc(c.bank_holder_name||"")}<br>A/C No.: ${esc(c.account_number||"")}<br>IFSC: ${esc(c.ifsc||"")}<br>UPI ID: ${esc(c.upi_id||"")}</div><p>No GST Charged</p><div style="margin-top:22px;text-align:center"><button onclick="window.print()" style="padding:10px 18px;border:0;border-radius:8px;background:#111827;color:#fff;cursor:pointer">PRINT / SAVE PDF</button> <button onclick="window.close()" style="padding:10px 18px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#111;cursor:pointer">← RETURN TO BHAGWATI FULFIL</button></div></body></html>`;openInvoicePrintWindow(html);}
+function printInvoice(id){const x=adminInvoices.find(v=>Number(v.id)===Number(id));if(!x)return;const c=(adminClientData||[]).find(v=>Number(v.id)===Number(x.client_id))||{};const b=businessPaymentSettings||{};const html=`<!doctype html><html><head><title>${esc(x.invoice_no)}</title><style>body{font-family:Arial;padding:30px;color:#111;max-width:850px;margin:auto}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:9px;text-align:left}.box{border:1px solid #ddd;padding:12px;border-radius:8px;margin:14px 0}.right{text-align:right}.total{font-size:20px;font-weight:700}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly Service Invoice</h2><div class="box"><b>BILL TO</b><br>${esc(c.Client_name||clientName(x.client_id))}<br>Client No: ${esc(c.client_number||"")}<br>Email: ${esc(c.email||"")}<br>Mobile: ${esc(c.mobile||"")}</div><p><b>Invoice:</b> ${esc(x.invoice_no)}<br><b>Service Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}<br><b>Due Date:</b> ${esc(formatDateIndia(x.due_date||""))}</p><table><tr><th>Particular</th><th class="right">Amount</th></tr><tr><td>Shipping Charges</td><td class="right">${money(x.shipping_charges)}</td></tr><tr><td>COD Collection / Handling (₹25 per COD parcel)</td><td class="right">${money(x.cod_charges)}</td></tr><tr><td>RTO Charges</td><td class="right">${money(x.rto_charges)}</td></tr><tr><td>Other Charges</td><td class="right">${money(x.other_charges)}</td></tr><tr><th class="total">TOTAL SERVICE PAYABLE</th><th class="right total">${money(x.total_amount)}</th></tr></table><p>Orders: ${Number(x.total_orders||0)} · Delivered: ${Number(x.delivered_count||0)} · RTO: ${Number(x.rto_count||0)} · Cancelled: ${Number(x.cancelled_count||0)}</p><div class="box"><b>PAYMENT TO BHAGWATI FULFIL</b><br>Account Name: ${esc(b.account_name||"")}<br>Bank: ${esc(b.bank_name||"")}<br>A/C No.: ${esc(b.account_number||"")}<br>IFSC: ${esc(b.ifsc||"")}<br>UPI ID: ${esc(b.upi_id||"")}</div><div class="box"><b>CLIENT COD SETTLEMENT / PAYOUT DETAILS</b><br>Account Holder: ${esc(c.bank_holder_name||"")}<br>A/C No.: ${esc(c.account_number||"")}<br>IFSC: ${esc(c.ifsc||"")}<br>UPI ID: ${esc(c.upi_id||"")}</div><p>No GST Charged</p><div style="margin-top:22px;text-align:center"><button type="button" onclick="window.print()" style="padding:10px 18px;border:0;border-radius:8px;background:#111827;color:#fff;cursor:pointer">PRINT / SAVE PDF</button> <button type="button" onclick="window.close()" style="padding:10px 18px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#111;cursor:pointer">← RETURN TO BHAGWATI FULFIL</button></div></body></html>`;openInvoicePrintWindow(html);}
 /* =========================================================
     LOGOUT
 ========================================================= */
