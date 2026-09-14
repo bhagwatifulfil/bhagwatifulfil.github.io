@@ -426,6 +426,8 @@ button:disabled{
 /* HARD AUTH GATE: NOTHING INSIDE CLIENT/ADMIN AREAS CAN SHOW BEFORE AUTH */
 body.auth-locked #clientArea,
 body.auth-locked #adminArea,
+#clientArea.pre-auth-hidden,
+#adminArea.pre-auth-hidden,
 body.auth-locked #clientArea *,
 body.auth-locked #adminArea * {
     display: none !important;
@@ -492,7 +494,7 @@ body.auth-locked #adminArea * {
  </button>
 </section>
 <!-- CLIENT -->
-<section id="clientArea" class="hidden">
+<section id="clientArea" class="hidden pre-auth-hidden" style="display:none!important">
  <div class="app-header">
   <div>
    <div class="brand-title">BHAGWATI FULFIL</div>
@@ -802,7 +804,7 @@ body.auth-locked #adminArea * {
 </div>
 </section>
 <!-- ADMIN -->
-<section id="adminArea" class="hidden">
+<section id="adminArea" class="hidden pre-auth-hidden" style="display:none!important">
  <div class="app-header">
   <div><div class="brand-title">BHAGWATI FULFIL ADMIN</div><div class="brand-subtitle">Operations control panel</div></div>
   <div class="header-actions"><button class="secondary mini-btn" type="button" onclick="refreshAdminDashboard()">↻</button><button class="menu-btn" type="button" aria-label="Open menu" onclick="toggleAppMenu('adminMenu')">⋮</button></div>
@@ -1082,6 +1084,18 @@ let adminPageHistory = [];
 
 /* INITIAL AUTH GATE
    Login screen is the only visible screen until Supabase auth succeeds. */
+function setAreaVisible(id, visible){
+    const el=$(id);
+    if(!el) return;
+    if(visible){
+        el.classList.remove("pre-auth-hidden");
+        el.style.removeProperty("display");
+    }else{
+        el.classList.add("pre-auth-hidden");
+        el.style.setProperty("display","none","important");
+    }
+}
+
 function enforceLoggedOutView(){
     document.body.classList.add("auth-locked");
     loginSection?.classList.remove("hidden");
@@ -1089,6 +1103,8 @@ function enforceLoggedOutView(){
     resetSection?.classList.add("hidden");
     clientArea?.classList.add("hidden");
     adminArea?.classList.add("hidden");
+    setAreaVisible("clientArea",false);
+    setAreaVisible("adminArea",false);
 }
 
 
@@ -1112,6 +1128,8 @@ function showLogin(){
     resetSection.classList.add("hidden");
     clientArea.classList.add("hidden");
     adminArea.classList.add("hidden");
+    setAreaVisible("clientArea",false);
+    setAreaVisible("adminArea",false);
 }
 enforceLoggedOutView();
 
@@ -1129,6 +1147,8 @@ function showReset(){
     resetSection.classList.remove("hidden");
     clientArea.classList.add("hidden");
     adminArea.classList.add("hidden");
+    setAreaVisible("clientArea",false);
+    setAreaVisible("adminArea",false);
 }
 function hideAuth(){
     loginSection.classList.add("hidden");
@@ -1459,8 +1479,10 @@ profile;
 if(profile.role==="admin"){
     hideAuth();
     document.body.classList.remove("auth-locked");
-    clientArea.classList.add("hidden");
+    setAreaVisible("clientArea",false);
     adminArea.classList.remove("hidden");
+    setAreaVisible("adminArea",true);
+    updatePageBackButtons();
     await loadAdmin();
     startAdminAutoRefresh();
     return;
@@ -1494,7 +1516,10 @@ try{
 hideAuth();
 document.body.classList.remove("auth-locked");
 adminArea.classList.add("hidden");
+setAreaVisible("adminArea",false);
 clientArea.classList.remove("hidden");
+setAreaVisible("clientArea",true);
+updatePageBackButtons();
 await loadClient();
 }
 /* =========================================================
@@ -4071,8 +4096,8 @@ function hideMenus(){document.querySelectorAll('.app-menu').forEach(m=>m.classLi
 function updatePageBackButtons(){
     const cb=$("clientBackBar");
     const ab=$("adminBackBar");
-    if(cb) cb.classList.toggle("hidden",clientCurrentPage==="dashboard");
-    if(ab) ab.classList.toggle("hidden",adminCurrentPage==="dashboard");
+    if(cb) cb.classList.remove("hidden");
+    if(ab) ab.classList.remove("hidden");
 }
 function showClientPage(page, fromBack=false){
     hideMenus();
@@ -4370,6 +4395,8 @@ async function logout(){
     document.body.classList.add("auth-locked");
     clientArea?.classList.add("hidden");
     adminArea?.classList.add("hidden");
+    setAreaVisible("clientArea",false);
+    setAreaVisible("adminArea",false);
     hideMenus();
     clientPageHistory=[];
     adminPageHistory=[];
@@ -4484,6 +4511,8 @@ supabaseClient
             adminArea
             .classList
             .add("hidden");
+            setAreaVisible("clientArea",false);
+            setAreaVisible("adminArea",false);
             showLogin();
         }
     }
