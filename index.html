@@ -415,8 +415,11 @@ button:disabled{
 
 
 /* AUTH GATE: client/admin content is invisible until loadUser() confirms auth. */
+/* HARD AUTH GATE: NOTHING INSIDE CLIENT/ADMIN AREAS CAN SHOW BEFORE AUTH */
 body.auth-locked #clientArea,
-body.auth-locked #adminArea {
+body.auth-locked #adminArea,
+body.auth-locked #clientArea *,
+body.auth-locked #adminArea * {
     display: none !important;
     visibility: hidden !important;
 }
@@ -1235,16 +1238,28 @@ await supabaseClient.auth.signUp({
         msg("signupMsg",error.message,"error");
         return;
     }
+    /* AUTO LOGIN: with Supabase Email Confirmation OFF, signUp returns a session.
+       If the project returns no session, try signing in immediately with the same
+       credentials. If confirmation is still enabled, Supabase will reject this and
+       the user is told exactly what setting must be changed. */
     if(data?.session){
         await loadUser();
         return;
     }
+
+    const { data:loginData, error:loginError } =
+        await supabaseClient.auth.signInWithPassword({ email, password });
+
+    if(!loginError && loginData?.session){
+        await loadUser();
+        return;
+    }
+
     msg(
         "signupMsg",
-        "Account created. Please login with your email and password.",
-        "ok"
+        "Account created, but automatic login is blocked. Please turn OFF Confirm email in Supabase Authentication → Sign In / Providers → Email, then try again.",
+        "error"
     );
-    setTimeout(showLogin,1200);
     }catch(e){
         msg("signupMsg",e?.message || "Unable to create account. Please try again.","error");
     }finally{
