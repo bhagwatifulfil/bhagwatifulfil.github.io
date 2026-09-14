@@ -958,7 +958,7 @@ body.auth-locked #adminArea * {
 <div class="card admin-page" id="adminInvoicesCard">
  <div class="topbar">
   <div>
-   <h2>Client Invoices</h2
+   <h2>Client Invoices</h2>
    <div class="small">Generate one invoice for Monday–Saturday charges for any client.</div>
   </div>
  </div>
@@ -2716,7 +2716,8 @@ function calculateInvoiceCharges(rows){
         const status=String(o.status||"").trim().toLowerCase();
         if(status==="delivered"){
             shipping+=Number(o.shipping_charge||0);
-            if(String(o.payment_type||"").toUpperCase()==="COD") cod+=Number(o.cod_charge||0);
+            // COD collection/handling is ₹25 per delivered COD parcel.
+            if(String(o.payment_type||"").toUpperCase()==="COD") cod+=25;
         }else if(status==="rto"){
             rto+=Number(o.rto_charge||0);
         }
@@ -4201,7 +4202,9 @@ function printClientInvoice(id){
     if(currentProfile?.role!=="client")return;
     const x=(clientInvoices||[]).find(v=>Number(v.id)===Number(id));
     if(!x || Number(x.client_id)!==Number(currentProfile.client_id))return alert("Invoice not found.");
-    const html=`<!doctype html><html><head><title>${esc(x.invoice_no)}</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#111;max-width:850px;margin:auto}h1{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:20px}td,th{border:1px solid #ddd;padding:10px;text-align:left}.right{text-align:right}.total{font-size:20px;font-weight:700}</style></head><body><h1>BHAGWATI FULFIL</h1><p>Weekly Service Invoice</p><hr><p><b>Invoice:</b> ${esc(x.invoice_no)}<br><b>Client:</b> ${esc(currentClient?.Client_name||"")}<br><b>Client No:</b> ${esc(currentClient?.client_number||"")}<br><b>Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}</p><table><tr><th>Particular</th><th class="right">Amount</th></tr><tr><td>Shipping Charges</td><td class="right">${money(x.shipping_charges)}</td></tr><tr><td>COD / Handling Charges</td><td class="right">${money(x.cod_charges)}</td></tr><tr><td>RTO Charges</td><td class="right">${money(x.rto_charges)}</td></tr><tr><td>Other Charges</td><td class="right">${money(x.other_charges)}</td></tr><tr><th class="total">Total Payable</th><th class="right total">${money(x.total_amount)}</th></tr></table><p><b>Orders:</b> ${Number(x.total_orders||0)} &nbsp; <b>Delivered:</b> ${Number(x.delivered_count||0)} &nbsp; <b>RTO:</b> ${Number(x.rto_count||0)} &nbsp; <b>Cancelled:</b> ${Number(x.cancelled_count||0)}</p><p>No GST Charged</p><script>window.onload=()=>window.print()<\/script></body></html>`;
+    const c=currentClient||{};
+    const b=businessPaymentSettings||{};
+    const html=`<!doctype html><html><head><title>${esc(x.invoice_no)}</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#111;max-width:850px;margin:auto}h1{margin-bottom:4px}h2{margin-top:0}.box{border:1px solid #ddd;padding:14px;border-radius:8px;margin:14px 0}table{width:100%;border-collapse:collapse;margin-top:20px}td,th{border:1px solid #ddd;padding:10px;text-align:left}.right{text-align:right}.total{font-size:20px;font-weight:700}.muted{color:#666;font-size:13px}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly Service Invoice</h2><div class="box"><b>BILL TO</b><br>${esc(c.Client_name||"")}<br>Client No: ${esc(c.client_number||"")}<br>Email: ${esc(c.email||"")}<br>Mobile: ${esc(c.mobile||"")}</div><p><b>Invoice:</b> ${esc(x.invoice_no)}<br><b>Service Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}<br><b>Due Date:</b> ${esc(formatDateIndia(x.due_date||""))}</p><table><tr><th>Particular</th><th class="right">Amount</th></tr><tr><td>Shipping Charges</td><td class="right">${money(x.shipping_charges)}</td></tr><tr><td>COD Collection / Handling (₹25 per COD parcel)</td><td class="right">${money(x.cod_charges)}</td></tr><tr><td>RTO Charges</td><td class="right">${money(x.rto_charges)}</td></tr><tr><td>Other Charges</td><td class="right">${money(x.other_charges)}</td></tr><tr><th class="total">TOTAL SERVICE PAYABLE</th><th class="right total">${money(x.total_amount)}</th></tr></table><p><b>Orders:</b> ${Number(x.total_orders||0)} &nbsp; <b>Delivered:</b> ${Number(x.delivered_count||0)} &nbsp; <b>RTO:</b> ${Number(x.rto_count||0)} &nbsp; <b>Cancelled:</b> ${Number(x.cancelled_count||0)}</p><div class="box"><b>PAYMENT TO BHAGWATI FULFIL</b><br>Account Name: ${esc(b.account_name||"")}<br>Bank: ${esc(b.bank_name||"")}<br>A/C No.: ${esc(b.account_number||"")}<br>IFSC: ${esc(b.ifsc||"")}<br>UPI ID: ${esc(b.upi_id||"")}</div><div class="box"><b>CLIENT COD SETTLEMENT / PAYOUT DETAILS</b><br>Account Holder: ${esc(c.bank_holder_name||"")}<br>A/C No.: ${esc(c.account_number||"")}<br>IFSC: ${esc(c.ifsc||"")}<br>UPI ID: ${esc(c.upi_id||"")}</div><p class="muted">Prepaid parcels have ₹0 COD handling. COD handling is ₹25 per delivered COD parcel. No GST Charged.</p><script>window.onload=()=>window.print()<\/script></body></html>`;
     const w=window.open("","_blank");if(w){w.document.write(html);w.document.close();}
 }
 
@@ -4273,46 +4276,7 @@ async function verifyAndSendInvoice(id){
 
 async function verifyClientPayment(submissionId,invoiceId){if(currentProfile?.role!=="admin")return;const{data:sub,error:fe}=await supabaseClient.from("client_payment_submissions").select("*").eq("id",submissionId).single();if(fe||!sub)return alert(fe?.message||"Payment submission not found.");if(Number(sub.invoice_id)!==Number(invoiceId))return alert("Payment submission does not match this invoice.");const{error}=await supabaseClient.from("client_invoices").update({payment_status:"Paid",paid_at:new Date().toISOString(),payment_reference:sub.utr}).eq("id",invoiceId);if(error)return alert(error.message);const{error:se}=await supabaseClient.from("client_payment_submissions").update({status:"Verified",verified_at:new Date().toISOString(),verified_by:currentUser.id}).eq("id",submissionId);if(se)return alert(se.message);await loadAdminInvoices();}
 async function markInvoicePaid(id){if(currentProfile?.role!=="admin")return;const ref=prompt("Client invoice payment UTR / reference:","");if(ref===null)return;const{error}=await supabaseClient.from("client_invoices").update({payment_status:"Paid",paid_at:new Date().toISOString(),payment_reference:ref.trim()}).eq("id",id);if(error)return alert(error.message);await loadAdminInvoices();}
-function printInvoice(id){const x=adminInvoices.find(v=>Number(v.id)===Number(id));if(!x)return;const html=`<!doctype html><html><head><title>${esc(x.invoice_no)}</title><style>body{font-family:Arial;padding:30px;color:#111}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:9px;text-align:left}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly Service Invoice</h2><p><b>Invoice:</b> ${esc(x.invoice_no)}</p><p><b>Client:</b> ${esc(clientName(x.client_id))}</p><p><b>Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}</p><table><tr><th>Particular</th><th>Amount</th></tr><tr><td>Total Bookings</td><td>${Number(x.total_orders||0)}</td></tr><tr><td>Shipping Charges</td><td>${money(x.shipping_charges)}</td></tr><tr><td>COD / Handling Charges</td><td>${money(x.cod_charges)}</td></tr><tr><td>RTO Charges</td><td>${money(x.rto_charges)}</td></tr><tr><td>Other Charges</td><td>${money(x.other_charges)}</td></tr><tr><th>Total Payable</th><th>${money(x.total_amount)}</th></tr></table><p>COD collections are settled separately as one weekly Monday–Saturday settlement.</p><p>No GST Charged</p><script>window.onload=()=>window.print()<\/script></body></html>`;const w=window.open("","_blank");if(w){w.document.write(html);w.document.close();}}
-/* =========================================================
-    LOGOUT
-========================================================= */
-async function logout(){
-    document.body.classList.add("auth-locked");
-    stopAdminAutoRefresh();
-    await supabaseClient
-    .auth
-    .signOut();
-    currentUser=null;
-    currentProfile=null;
-    currentClient=null;
-    clientOrders=[];
-    adminBookingData=[];
-    adminClientData=[];
-    clientSupportItems=[];
-    adminSupportItems=[];
-    openAdminDetailId=null;
-    clientCodSettlements=[]; clientInvoices=[]; adminCodSettlements=[]; adminInvoices=[];
-    knownCancellationIds =
-    new Set();
-    firstAdminCancellationLoad =
-    true;
-    clientArea
-    .classList
-    .add("hidden");
-    adminArea
-    .classList
-    .add("hidden");
-    $("loginEmail").value="";
-    $("loginPassword").value="";
-    $("signupName").value="";
-    $("signupMobile").value="";
-    $("signupEmail").value="";
-    $("signupPassword").value="";
-    $("loginMsg").innerHTML="";
-    $("signupMsg").innerHTML="";
-    showLogin();
-}
+function printInvoice(id){const x=adminInvoices.find(v=>Number(v.id)===Number(id));if(!x)return;const c=(adminClientData||[]).find(v=>Number(v.id)===Number(x.client_id))||{};const b=businessPaymentSettings||{};const html=`<!doctype html><html><head><title>${esc(x.invoice_no)}</title><style>body{font-family:Arial;padding:30px;color:#111;max-width:850px;margin:auto}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:9px;text-align:left}.box{border:1px solid #ddd;padding:12px;border-radius:8px;margin:14px 0}.right{text-align:right}.total{font-size:20px;font-weight:700}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly Service Invoice</h2><div class="box"><b>BILL TO</b><br>${esc(c.Client_name||clientName(x.client_id))}<br>Client No: ${esc(c.client_number||"")}<br>Email: ${esc(c.email||"")}<br>Mobile: ${esc(c.mobile||"")}</div><p><b>Invoice:</b> ${esc(x.invoice_no)}<br><b>Service Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}<br><b>Due Date:</b> ${esc(formatDateIndia(x.due_date||""))}</p><table><tr><th>Particular</th><th class="right">Amount</th></tr><tr><td>Shipping Charges</td><td class="right">${money(x.shipping_charges)}</td></tr><tr><td>COD Collection / Handling (₹25 per COD parcel)</td><td class="right">${money(x.cod_charges)}</td></tr><tr><td>RTO Charges</td><td class="right">${money(x.rto_charges)}</td></tr><tr><td>Other Charges</td><td class="right">${money(x.other_charges)}</td></tr><tr><th class="total">TOTAL SERVICE PAYABLE</th><th class="right total">${money(x.total_amount)}</th></tr></table><p>Orders: ${Number(x.total_orders||0)} · Delivered: ${Number(x.delivered_count||0)} · RTO: ${Number(x.rto_count||0)} · Cancelled: ${Number(x.cancelled_count||0)}</p><div class="box"><b>PAYMENT TO BHAGWATI FULFIL</b><br>Account Name: ${esc(b.account_name||"")}<br>Bank: ${esc(b.bank_name||"")}<br>A/C No.: ${esc(b.account_number||"")}<br>IFSC: ${esc(b.ifsc||"")}<br>UPI ID: ${esc(b.upi_id||"")}</div><div class="box"><b>CLIENT COD SETTLEMENT / PAYOUT DETAILS</b><br>Account Holder: ${esc(c.bank_holder_name||"")}<br>A/C No.: ${esc(c.account_number||"")}<br>IFSC: ${esc(c.ifsc||"")}<br>UPI ID: ${esc(c.upi_id||"")}</div><p>No GST Charged</p><script>window.onload=()=>window.print()<\/script></body></html>`;const w=window.open("","_blank");if(w){w.document.write(html);w.document.close();}}
 /* =========================================================
     ESCAPE HTML
 ========================================================= */
