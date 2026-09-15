@@ -958,7 +958,7 @@ body.auth-locked #adminArea * {
 <div class="card admin-page" id="adminInvoicesCard">
  <div class="topbar">
   <div>
-   <h2>Client Invoices</h2
+   <h2>Client Invoices</h2>
    <div class="small">Generate one invoice for Monday–Saturday charges for any client.</div>
   </div>
  </div>
@@ -1966,15 +1966,10 @@ if(error){
     );
 }
 
-     // Booking is safely stored in Supabase. Notify Admin on Telegram immediately.
-     // A Telegram failure does NOT cancel the successful shipment booking.
-     const telegramResult =
-         await sendTelegramBookingNotification(
-             booking,
-             currentClient?.Client_name || currentProfile?.full_name || "Client"
-         );
+     // Telegram notification is handled by the Supabase AFTER INSERT trigger.
+     // No client-side duplicate notification is sent here.
 
-     orderIdInput.value =
+    orderIdInput.value =
 orderId;
     msg(
         "bookingMsg",
@@ -4007,24 +4002,6 @@ async function loadAdminNotifications(){
         return;
     }
     const rows=data||[];
-
-    // Load the complete booking records linked to each admin task.
-    // The task table intentionally contains only queue/summary fields.
-    const bookingIds = rows
-      .map(t => Number(t.booking_id))
-      .filter(Number.isFinite);
-    let bookingMap = {};
-    if(bookingIds.length){
-      const {data:bookingRows, error:bookingError} = await supabaseClient
-        .from("bookings")
-        .select("*")
-        .in("id", bookingIds);
-      if(!bookingError){
-        (bookingRows||[]).forEach(b => { bookingMap[String(b.id)] = b; });
-      } else {
-        console.warn("Admin booking detail load error:", bookingError.message);
-      }
-    }
     window.adminNotificationRows=rows;
     const fresh=rows.filter(x=>x.status==="New").length;
     const pending=rows.filter(x=>x.status==="Genz Booking Pending").length;
@@ -4040,55 +4017,18 @@ async function loadAdminNotifications(){
         const isNew=t.status==="New";
         const isPending=t.status==="Genz Booking Pending";
         const isBooked=t.status==="Genz Booked";
-        const b=bookingMap[String(t.booking_id)]||{};
-        const fmtMoney=v => `₹${Number(v||0).toFixed(2)}`;
-        const fmtDate=v => v ? new Date(v).toLocaleString("en-IN") : "";
         return `<div class="shipment-row" style="margin-bottom:10px;">
           <div class="shipment-summary">
             <div>
-              <b>${esc(b.order_id||t.order_id||"")}</b><br>
+              <b>${esc(t.order_id||"")}</b><br>
               <span class="small">${esc(t.client_name||("Client "+(t.client_id||"")))}</span>
             </div>
             <div>${adminTaskBadge(t.status)}</div>
           </div>
-
-          <div class="detail-grid" style="margin-top:10px;">
-            <div class="detail-box">
-              <h4>📦 Booking</h4>
-              <p><b>Order ID:</b> ${esc(b.order_id||t.order_id||"")}</p>
-              <p><b>Booked:</b> ${esc(fmtDate(b.created_at||t.created_at))}</p>
-              <p><b>Payment:</b> ${esc(b.payment_type||t.payment_type||"")}</p>
-              <p><b>Parcel Value:</b> ${fmtMoney(b.parcel_value ?? t.parcel_value)}</p>
-              <p><b>Zone:</b> ${esc(b.zone||"")}</p>
-            </div>
-
-            <div class="detail-box">
-              <h4>📍 Pickup</h4>
-              <p><b>Name:</b> ${esc(b.pickup_name||"")}</p>
-              <p><b>Mobile:</b> ${esc(b.pickup_mobile||"")}</p>
-              <p><b>Address:</b> ${esc(b.pickup_address||"")}</p>
-              <p><b>Pincode:</b> ${esc(b.pickup_pincode||t.pickup_pincode||"")}</p>
-            </div>
-
-            <div class="detail-box">
-              <h4>🚚 Delivery</h4>
-              <p><b>Customer:</b> ${esc(b.customer_name||"")}</p>
-              <p><b>Mobile:</b> ${esc(b.customer_mobile||"")}</p>
-              <p><b>Address:</b> ${esc(b.delivery_address||"")}</p>
-              <p><b>Pincode:</b> ${esc(b.delivery_pincode||t.delivery_pincode||"")}</p>
-            </div>
-
-            <div class="detail-box">
-              <h4>⚖️ Package & Charges</h4>
-              <p><b>Weight:</b> ${esc(b.actual_weight_g||"")} g</p>
-              <p><b>Dimensions:</b> ${esc(b.length_cm||"")} × ${esc(b.width_cm||"")} × ${esc(b.height_cm||"")} cm</p>
-              <p><b>Chargeable:</b> ${esc(b.chargeable_weight_kg||"")} kg</p>
-              <p><b>Shipping:</b> ${fmtMoney(b.shipping_charge)}</p>
-              <p><b>COD:</b> ${fmtMoney(b.cod_charge)}</p>
-              <p><b>Total:</b> <strong>${fmtMoney(b.total_charge)}</strong></p>
-            </div>
+          <div class="small" style="margin-top:8px;">
+            ${esc(t.created_at ? new Date(t.created_at).toLocaleString("en-IN") : "")} · ${esc(t.payment_type||"")} · COD ₹${Number(t.parcel_value||0).toFixed(2)}<br>
+            Pickup ${esc(t.pickup_pincode||"")} → Delivery ${esc(t.delivery_pincode||"")}
           </div>
-
           <div class="actions" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
             ${isNew ? `<button onclick="checkNewBooking(${Number(t.id)})">✅ CHECK</button>` : ""}
             ${isNew ? `<button class="secondary" onclick='sendBookingWhatsApp(${JSON.stringify(t).replace(/'/g,"&#39;")})'>📲 WhatsApp</button>` : ""}
