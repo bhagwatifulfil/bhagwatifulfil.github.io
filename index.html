@@ -1276,13 +1276,18 @@ async function signup(){
         }
 
         /*
-         * Automatic login requires Supabase Authentication > Email > Confirm email
-         * to be OFF. If Supabase did not return a session, try direct login once.
+         * NEW CLIENTS MUST BE LOGGED IN IMMEDIATELY.
+         * Supabase must have Email Confirmations = OFF for this flow.
+         * No admin approval/verification is used by this signup flow.
          */
         if(!authData?.session){
             const loginResult = await supabaseClient.auth.signInWithPassword({email,password});
             if(loginResult.error || !loginResult.data?.session){
-                return msg("signupMsg","Account created, but automatic login is blocked. Turn OFF Confirm email in Supabase Authentication → Sign In / Providers → Email.","error");
+                return msg(
+                    "signupMsg",
+                    "Account created, but automatic login is blocked. In Supabase open Authentication → Sign In / Providers → Email and turn OFF Confirm email.",
+                    "error"
+                );
             }
             authData = loginResult.data;
         }
@@ -1294,54 +1299,34 @@ async function signup(){
         }
 
         /*
-         * IMPORTANT: Auth users and the business `clients` table are separate.
-         * Create/link the client record automatically so Admin can see it and
-         * login can resolve the client by email.
+         * Create/link the business client record through a SECURITY DEFINER RPC.
+         * This avoids requiring a public INSERT policy on `clients`.
          */
-        let {data:clientRows,error:clientLookupError} = await supabaseClient
+        const clientRegister = await supabaseClient.rpc("register_my_client", {
+            p_name: name,
+            p_mobile: mobile,
+            p_email: email
+        });
+        if(clientRegister.error){
+            return msg(
+                "signupMsg",
+                "Account created, but client profile setup failed: " + clientRegister.error.message,
+                "error"
+            );
+        }
+
+        /* Resolve the newly-created client strictly from the logged-in email. */
+        const {data:clientRows,error:clientLookupError} = await supabaseClient
             .from("clients")
             .select('id,"Client_name",mobile,email,created_at,client_number,bank_holder_name,account_number,ifsc,upi_id,is_locked,bank_edit_allowed,profile_edit_allowed')
             .ilike("email",email);
 
         if(clientLookupError){
-            return msg("signupMsg","Account created, but client account setup failed: " + clientLookupError.message,"error");
+            return msg("signupMsg","Account created, but client account could not be loaded: " + clientLookupError.message,"error");
         }
-
-        if(!Array.isArray(clientRows) || clientRows.length===0){
-            const {data:newClient,error:newClientError} = await supabaseClient
-                .from("clients")
-                .insert({
-                    Client_name:name,
-                    mobile:mobile,
-                    email:email
-                })
-                .select('id,"Client_name",mobile,email,created_at,client_number,bank_holder_name,account_number,ifsc,upi_id,is_locked,bank_edit_allowed,profile_edit_allowed')
-                .single();
-
-            if(newClientError){
-                return msg("signupMsg","Account created, but Client Accounts setup failed: " + newClientError.message,"error");
-            }
-            clientRows=[newClient];
-        }else if(clientRows.length===1){
-            /* Keep an existing unlinked/old record usable and sync signup details. */
-            const existing=clientRows[0];
-            const patch={};
-            if(!String(existing.Client_name||"").trim() || String(existing.Client_name||"").trim().toLowerCase()==="or global export") patch.Client_name=name;
-            if(!String(existing.mobile||"").trim()) patch.mobile=mobile;
-            if(Object.keys(patch).length){
-                const {data:updatedClient,error:updateError}=await supabaseClient
-                    .from("clients")
-                    .update(patch)
-                    .eq("id",Number(existing.id))
-                    .select('id,"Client_name",mobile,email,created_at,client_number,bank_holder_name,account_number,ifsc,upi_id,is_locked,bank_edit_allowed,profile_edit_allowed')
-                    .single();
-                if(updateError) return msg("signupMsg","Client account update failed: " + updateError.message,"error");
-                clientRows=[updatedClient];
-            }
-        }else{
-            return msg("signupMsg","Account setup error: multiple client records use this email. Please contact BHAGWATI FULFIL support.","error");
+        if(!Array.isArray(clientRows) || clientRows.length!==1){
+            return msg("signupMsg","Account created, but the client profile could not be linked. Please check the clients RLS policies.","error");
         }
-
         msg("signupMsg","Account created successfully. Opening your Client Portal...");
         await loadUser();
     }catch(e){
