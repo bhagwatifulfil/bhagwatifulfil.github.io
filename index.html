@@ -3855,74 +3855,36 @@ async function rejectCancellation(id){
     ADMIN STATS
 ========================================================= */
 async function loadAdminStats(){
-    const {
-        data,
-        error
-    }=
-    await supabaseClient
-    .from("bookings")
-    .select(
-        "status,created_at,delivered_at,order_date"
-    );
-    if(error)
+    if(currentProfile?.role!=="admin") return;
+    const {data,error}=await supabaseClient.rpc("get_admin_dashboard_data");
+    if(error){
+        console.warn("Admin dashboard data error:",error.message);
         return;
-    const today =
-    getIndiaDate();
-    const todayDate =
-    new Date(
-        today+"T00:00:00"
-    );
-    const weekDate =
-    new Date(todayDate);
-    weekDate.setDate(
-        weekDate.getDate()-7
-    );
-    const monthDate =
-    new Date(
-        todayDate.getFullYear(),
- todayDate.getMonth(),
- 1
-);
-let t=0;
-let w=0;
-let m=0;
-(data||[])
-.forEach(o=>{
- if(o.status!=="Delivered")
-     return;
- const dateString =
- getOrderDate(
-     o
- );
- const d =
- new Date(
-     dateString+"T00:00:00"
- );
- if(
-     dateString===today
- ){
-     t++;
- }
- if(
-     d>=weekDate
- ){
-     w++;
- }
- if(
-     d>=monthDate
- ){
-     m++;
- }
-});
-$("todayDelivered")
-.textContent=t;
-    $("weekDelivered")
-    .textContent=w;
-    $("monthDelivered")
-    .textContent=m;
-    $("totalBookings")
-    .textContent=
-    (data||[]).length;
+    }
+    const bookings=Array.isArray(data?.bookings)?data.bookings:[];
+    const today=getIndiaDate();
+    const todayDate=new Date(today+"T00:00:00");
+    const weekDate=new Date(todayDate);
+    weekDate.setDate(weekDate.getDate()-7);
+    const monthDate=new Date(todayDate.getFullYear(),todayDate.getMonth(),1);
+    let todayCount=0,weekCount=0,monthCount=0;
+    bookings.forEach(o=>{
+        const dateString=getOrderDate(o);
+        if(dateString===today) todayCount++;
+        const d=new Date(dateString+"T00:00:00");
+        if(!Number.isNaN(d.getTime()) && d>=weekDate) weekCount++;
+        if(!Number.isNaN(d.getTime()) && d>=monthDate) monthCount++;
+    });
+    $("todayDelivered").textContent=todayCount;
+    $("weekDelivered").textContent=weekCount;
+    $("monthDelivered").textContent=monthCount;
+    $("totalBookings").textContent=bookings.length;
+    const todayLabel=document.querySelector('#todayDelivered')?.previousElementSibling;
+    const weekLabel=document.querySelector('#weekDelivered')?.previousElementSibling;
+    const monthLabel=document.querySelector('#monthDelivered')?.previousElementSibling;
+    if(todayLabel) todayLabel.textContent="Today Bookings";
+    if(weekLabel) weekLabel.textContent="This Week Bookings";
+    if(monthLabel) monthLabel.textContent="This Month Bookings";
 }
 /* =========================================================
     ADMIN BOOKING CONTROL / NOTIFICATIONS
@@ -3999,50 +3961,32 @@ async function loadAdminNotifications(){
         if(summary) summary.innerHTML="";
         return;
     }
-
-    const {data,error}=await supabaseClient
-        .from("admin_booking_tasks")
-        .select("*")
-        .order("created_at",{ascending:false});
-
+    const {data,error}=await supabaseClient.rpc("get_admin_dashboard_data");
     if(error){
-        box.innerHTML=`<div class="notice error"><b>Booking queue could not be loaded.</b><br>${esc(error.message||"Unknown error")}<br><span class="small">No booking data was changed.</span></div>`;
+        box.innerHTML=`<div class="notice error"><b>Booking queue could not be loaded.</b><br>${esc(error.message||"Unknown error")}<br><span class="small">Admin dashboard RPC failed. No booking data was changed.</span></div>`;
         if(summary) summary.innerHTML="";
         return;
     }
-
-    const rows=Array.isArray(data)?data:[];
+    const rows=Array.isArray(data?.tasks)?data.tasks:[];
+    const bookings=Array.isArray(data?.bookings)?data.bookings:[];
+    const bookingMap={};
+    bookings.forEach(b=>{bookingMap[String(b.id)]=b;});
     window.adminNotificationRows=rows;
-
-    const bookingIds=rows.map(t=>Number(t.booking_id)).filter(Number.isFinite);
-    let bookingMap={};
-    if(bookingIds.length){
-        const {data:bookingRows}=await supabaseClient
-            .from("bookings")
-            .select("*")
-            .in("id",bookingIds);
-        (bookingRows||[]).forEach(b=>{bookingMap[String(b.id)]=b;});
-    }
-
     const fresh=rows.filter(x=>x.status==="New").length;
     const pending=rows.filter(x=>x.status==="Genz Booking Pending").length;
     const booked=rows.filter(x=>x.status==="Genz Booked").length;
     const awb=rows.filter(x=>x.status==="AWB Added").length;
-
     if(summary) summary.innerHTML=`
       <div class="ratebox"><b>🔴 New</b><h2>${fresh}</h2></div>
       <div class="ratebox"><b>🟠 Genz Pending</b><h2>${pending}</h2></div>
       <div class="ratebox"><b>🔵 Genz Booked</b><h2>${booked}</h2></div>
       <div class="ratebox"><b>🟢 AWB Added</b><h2>${awb}</h2></div>`;
-
     if(!rows.length){
         box.innerHTML='<div class="notice">No booking tasks yet.</div>';
         return;
     }
-
     const fmtMoney=v=>`₹${Number(v||0).toFixed(2)}`;
     const fmtDate=v=>v?new Date(v).toLocaleString("en-IN"):"—";
-
     box.innerHTML=rows.map(t=>{
         const b=bookingMap[String(t.booking_id)]||{};
         const isNew=t.status==="New";
@@ -4052,10 +3996,7 @@ async function loadAdminNotifications(){
           ? `${esc(b.length_cm)} × ${esc(b.width_cm)} × ${esc(b.height_cm)} cm` : "—";
         return `<div class="shipment-row" style="margin-bottom:14px;">
           <div class="shipment-summary">
-            <div>
-              <b>${esc(t.order_id||b.order_id||"Booking")}</b><br>
-              <span class="small">${esc(t.client_name||("Client "+(t.client_id||"")))}</span>
-            </div>
+            <div><b>${esc(t.order_id||b.order_id||"Booking")}</b><br><span class="small">${esc(t.client_name||("Client "+(t.client_id||"")))}</span></div>
             <div>${adminTaskBadge(t.status)}</div>
           </div>
           <div class="small" style="margin-top:8px;line-height:1.6;">
