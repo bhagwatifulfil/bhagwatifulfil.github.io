@@ -3856,12 +3856,22 @@ async function rejectCancellation(id){
 ========================================================= */
 async function loadAdminStats(){
     if(currentProfile?.role!=="admin") return;
-    const {data,error}=await supabaseClient.rpc("get_admin_dashboard_data");
-    if(error){
-        console.warn("Admin dashboard data error:",error.message);
-        return;
+
+    /* Use the admin-visible bookings table directly.
+       This keeps dashboard counts independent of RPC response shape
+       and works for every current/future client. */
+    let bookings=Array.isArray(adminBookingData)?adminBookingData:[];
+    if(!bookings.length){
+        const {data,error}=await supabaseClient
+            .from("bookings")
+            .select("*")
+            .order("created_at",{ascending:false});
+        if(error){
+            console.warn("Admin bookings data error:",error.message);
+            return;
+        }
+        bookings=data||[];
     }
-    const bookings=Array.isArray(data?.bookings)?data.bookings:[];
     const today=getIndiaDate();
     const todayDate=new Date(today+"T00:00:00");
     const weekDate=new Date(todayDate);
@@ -3961,14 +3971,27 @@ async function loadAdminNotifications(){
         if(summary) summary.innerHTML="";
         return;
     }
-    const {data,error}=await supabaseClient.rpc("get_admin_dashboard_data");
-    if(error){
-        box.innerHTML=`<div class="notice error"><b>Booking queue could not be loaded.</b><br>${esc(error.message||"Unknown error")}<br><span class="small">Admin dashboard RPC failed. No booking data was changed.</span></div>`;
+    /* Read admin tasks and bookings directly so the New Order queue
+       is not dependent on the dashboard RPC. Both queries are protected
+       by the Admin RLS policies and are not filtered by client_id. */
+    const [taskResult,bookingResult]=await Promise.all([
+        supabaseClient
+            .from("admin_booking_tasks")
+            .select("*")
+            .order("created_at",{ascending:false}),
+        supabaseClient
+            .from("bookings")
+            .select("*")
+            .order("created_at",{ascending:false})
+    ]);
+    if(taskResult.error || bookingResult.error){
+        const err=taskResult.error || bookingResult.error;
+        box.innerHTML=`<div class="notice error"><b>Booking queue could not be loaded.</b><br>${esc(err?.message||"Unknown error")}<br><span class="small">Please check Admin booking permissions.</span></div>`;
         if(summary) summary.innerHTML="";
         return;
     }
-    const rows=Array.isArray(data?.tasks)?data.tasks:[];
-    const bookings=Array.isArray(data?.bookings)?data.bookings:[];
+    const rows=taskResult.data||[];
+    const bookings=bookingResult.data||[];
     const bookingMap={};
     bookings.forEach(b=>{bookingMap[String(b.id)]=b;});
     window.adminNotificationRows=rows;
