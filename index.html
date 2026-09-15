@@ -826,7 +826,7 @@ body.auth-locked #adminArea * {
   <div class="quick-grid"><button class="quick-card" onclick="showAdminPage('shipments')"><b>📦 All Shipments</b><span>Bookings & status</span></button><button class="quick-card" onclick="showAdminPage('invoices')"><b>🧾 Invoices</b><span>Generate & verify</span></button><button class="quick-card" onclick="showAdminPage('cod')"><b>💰 Weekly COD</b><span>Create & pay</span></button><button class="quick-card" onclick="showAdminPage('payments')"><b>💳 Payments</b><span>Verify submissions</span></button></div>
  </div>
 <!-- DEDICATED TODAY BOOKINGS DESK -->
- <div class="card admin-page today-bookings-desk" id="adminTodayBookingsCard">
+ <div class="card admin-page today-bookings-desk active" id="adminTodayBookingsCard">
   <div class="today-bookings-head">
    <div>
     <h2>📅 Today's Bookings</h2>
@@ -2682,38 +2682,28 @@ async function requestCancellation(id){
     DOWNLOAD PRIVATE LABEL
 ========================================================= */
 async function downloadLabel(id){
-    const o =
-    clientOrders.find(
-        x => Number(x.id)===Number(id)
-    );
+    const o = clientOrders.find(x => Number(x.id) === Number(id));
     if(!o?.label_file_path){
-        return alert(
-         "Shipping label is not available yet."
-        );
+        return alert("Shipping label is not available yet.");
     }
-    const {
-        data,
-        error
-    }=
-    await supabaseClient
-    .storage
-    .from("shipping-labels")
-    .createSignedUrl(
-        o.label_file_path,
-        300
-    );
-    if(error){
-        return alert(
-         error.message
-        );
-    }
-    if(data?.signedUrl){
-        window.open(
-         data.signedUrl,
-         "_blank"
-        );
+    try{
+        const { data, error } = await supabaseClient.storage.from("shipping-labels").download(o.label_file_path);
+        if(error) throw error;
+        if(!data) throw new Error("Shipping label file not found.");
+        const blobUrl = URL.createObjectURL(data);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `${o.order_id || "shipping-label"}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    }catch(e){
+        console.error("downloadLabel error:",e);
+        alert("Shipping label download failed: " + (e.message || String(e)));
     }
 }
+
 async function refreshAdminDashboard(){
     if(currentProfile?.role!=="admin") return;
     const btns = document.querySelectorAll('#adminArea button');
@@ -3274,6 +3264,10 @@ return `
  id="admin-${o.id}"
  class="details"
 >
+ <div class="page-back-row booking-detail-back-row">
+  <button type="button" class="page-back-btn" onclick="toggleDetails('admin-${o.id}')">← Back to Shipments</button>
+  <span class="small">Shipment Details</span>
+ </div>
  ${cancelNotice}
  <div class="detail-grid">
     <!-- PICKUP -->
@@ -3713,109 +3707,39 @@ async function uploadLabelFile(
 async function updateBooking(id){
     const previousScrollY=window.scrollY;
     openAdminDetailId=`admin-${id}`;
-    const o =
-    adminBookingData.find(
-     x =>
-     Number(x.id)===Number(id)
-    );
-    const status =
-    $(`status-${id}`).value;
-    const file =
-    $(`labelFile-${id}`)
-    ?.files?.[0];
+    const o=adminBookingData.find(x=>Number(x.id)===Number(id));
+    if(!o){msg("adminMsg","Booking not found.","error");return;}
+    const statusEl=$(`status-${id}`);
+    const trackingEl=$(`tracking-${id}`);
+    const trackingLinkEl=$(`trackingLink-${id}`);
+    const fileEl=$(`labelFile-${id}`);
+    if(!statusEl){msg("adminMsg","Status field not found.","error");return;}
+    const status=statusEl.value;
+    const file=fileEl?.files?.[0]||null;
+    const button=document.querySelector(`button[onclick="updateBooking(${id})"]`);
     try{
-     let fp =
-     o?.label_file_path ||
-     null;
-     if(file){
-         msg(
-          "adminMsg",
-      "Uploading shipping label PDF..."
-    );
-    fp =
-    await uploadLabelFile(
-      id,
-      file
-    );
+      if(button){button.disabled=true;button.textContent="SAVING...";}
+      msg("adminMsg","Updating booking...","notice");
+      let labelPath=o.label_file_path||null;
+      if(file){msg("adminMsg","Uploading shipping label PDF...","notice");labelPath=await uploadLabelFile(id,file);}
+      let finalStatus=status;
+      let cancellationRequested=!!o.cancellation_requested;
+      if(status==="Cancellation Requested"){cancellationRequested=true;finalStatus="Cancellation Requested";}
+      const updates={status:finalStatus,cancellation_requested:cancellationRequested,tracking_number:trackingEl?.value?.trim()||"",tracking_link:trackingLinkEl?.value?.trim()||"",label_file_path:labelPath,delivered_at:finalStatus==="Delivered"?(o.delivered_at||new Date().toISOString()):null};
+      if(finalStatus==="Cancelled"){updates.cancelled_at=o.cancelled_at||new Date().toISOString();updates.cancellation_requested=false;}
+      const {error}=await supabaseClient.from("bookings").update(updates).eq("id",id);
+      if(error) throw error;
+      if(typeof syncCodSettlementForBooking==="function") await syncCodSettlementForBooking(id,finalStatus);
+      msg("adminMsg","✅ Booking updated successfully.","ok");
+      await loadAdminBookings();
+      await loadAdminStats();
+      await loadAdminNotifications();
+      openAdminDetailId=`admin-${id}`;
+      requestAnimationFrame(()=>{window.scrollTo({top:previousScrollY,behavior:"instant"});setTimeout(()=>{$(`admin-${id}`)?.classList.add("open");},50);});
+    }catch(e){console.error("updateBooking error:",e);msg("adminMsg","❌ Update failed: "+(e.message||String(e)),"error");}
+    finally{if(button){button.disabled=false;button.textContent="SAVE UPDATE";}}
 }
-let finalStatus =
-status;
-let cancellationRequested =
-o?.cancellation_requested ||
-false;
-if(
-    status==="Cancellation Requested"
-){
-    cancellationRequested =
-    true;
-    finalStatus =
-    "Cancellation Requested";
-}
-const updates = {
-    status:
-    finalStatus,
-    cancellation_requested:
-    cancellationRequested,
-    tracking_number:
-    $(`tracking-${id}`)
-    .value
-    .trim(),
-    tracking_link:
-    $(`trackingLink-${id}`)
-    .value
-    .trim(),
-    label_file_path:
-    fp,
-    delivered_at:
-    finalStatus==="Delivered"
-    ?
-    (
-        o?.delivered_at ||
-        new Date().toISOString()
-    )
-    :
-    null
-};
-if(
-    finalStatus==="Cancelled"
-){
-    updates.cancelled_at =
-    o?.cancelled_at ||
-    new Date().toISOString();
-    updates.cancellation_requested =
-    false;
-}
-const {
-    error
-}=
-await supabaseClient
-.from("bookings")
-.update(updates)
-.eq(
-    "id",
-    id
-);
-if(error)
-    throw error;
-await syncCodSettlementForBooking(id, finalStatus);
-msg(
-    "adminMsg",
-    "Booking updated successfully.",
-    "ok"
-);
-        await loadAdminBookings();
-        await loadAdminStats();
-        requestAnimationFrame(()=>window.scrollTo({top:previousScrollY,behavior:"instant"}));
-    }
-    catch(e){
-        msg(
-         "adminMsg",
-         e.message ||
-         String(e),
-         "error"
-        );
-    }
-}
+
 /* =========================================================
     APPROVE CANCELLATION
 ========================================================= */
@@ -4231,6 +4155,13 @@ function startAdminAutoRefresh(){
          if(
              currentProfile?.role!=="admin"
          ){
+             return;
+         }
+         // Do not rerender the shipment list while an admin is editing a booking.
+         // Background refresh used to close the detail and wipe unsaved fields.
+         const activeEl=document.activeElement;
+         const editingField=activeEl?.id?.match(/^(status|tracking|trackingLink|labelFile)-\d+$/);
+         if(openAdminDetailId || editingField){
              return;
          }
          await loadAdminBookings();
