@@ -3500,6 +3500,7 @@ return `
  }
 </div>
 <button
+ type="button"
  class="success"
  onclick="updateBooking(${o.id})"
 >
@@ -4081,21 +4082,33 @@ function toggleAppMenu(id){
 function hideMenus(){document.querySelectorAll('.app-menu').forEach(m=>m.classList.add('hidden'));}
 function ensurePageBackButton(container, backHandler, label){
     if(!container) return;
-    let row=container.querySelector(":scope > .page-back-row");
-    if(!row){
-        row=document.createElement("div");
-        row.className="page-back-row";
-        row.innerHTML=`<button type="button" class="page-back-btn">← Back</button><span class="small">${esc(label||"Dashboard")}</span>`;
-        row.querySelector("button").addEventListener("click",backHandler);
-        container.insertBefore(row,container.firstChild);
-    }
+    let row=container.querySelector(':scope > .page-back-row');
+    if(row) return;
+    row=document.createElement('div');
+    row.className='page-back-row';
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='page-back-btn';
+    button.textContent='← Back';
+    const text=document.createElement('span');
+    text.className='small';
+    text.textContent=label||'Dashboard';
+    button.addEventListener('click',function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        if(typeof backHandler==='function') backHandler();
+    });
+    row.appendChild(button);
+    row.appendChild(text);
+    container.insertBefore(row,container.firstChild);
 }
 
 function showClientPage(page){
     hideMenus();
     document.querySelectorAll('#clientArea .app-page').forEach(x=>x.classList.remove('active'));
     ['clientProfileBox','bookingBox','ordersBox','clientCodBox','clientInvoiceBox','clientSupportBox'].forEach(id=>$(id)?.classList.add('hidden'));
-    if(page==='dashboard'){$('clientDashboardHome')?.classList.add('active');return;}
+    // Client should never see the dashboard; open shipment updates instead.
+    if(page==='dashboard') page='shipments';
     const map={profile:'clientProfileBox',booking:'bookingBox',shipments:'ordersBox',reports:'ordersBox',cod:'clientCodBox',invoices:'clientInvoiceBox',support:'clientSupportBox'};
     const id=map[page]; if(id){$(id)?.classList.remove('hidden');}
     if(page==='reports'){
@@ -4110,6 +4123,10 @@ function showAdminPage(page){
       dashboard:'adminDashboardHome',clients:'adminClientsCard',shipments:'adminShipmentsCard',
       invoices:'adminInvoicesCard',cod:'adminCodCard',bank:'adminBankCard',support:'adminSupportBox'
     };
+    const todayDesk=$('adminTodayBookingsCard');
+    if(todayDesk){
+        todayDesk.classList.toggle('active',page==='dashboard');
+    }
     const id=map[page];
     if(id){
         const target=$(id);
