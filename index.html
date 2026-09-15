@@ -425,6 +425,22 @@ body.auth-locked #adminArea * {
 }
 #clientArea.hidden, #adminArea.hidden { display:none !important; }
 #clientArea:not(.hidden), #adminArea:not(.hidden) { display:block; }
+
+.today-bookings-desk{margin-top:18px;border:1px solid #dbe3ef;border-radius:12px;padding:16px;background:#fff}
+.today-bookings-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.today-bookings-head h2{margin:0}
+.today-bookings-count{font-size:14px;font-weight:700;padding:6px 10px;border-radius:20px;background:#eef2ff}
+.today-booking-item{border:1px solid #e5e7eb;border-radius:10px;padding:13px;margin-top:10px}
+.today-booking-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.today-booking-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin-top:10px}
+.today-booking-grid .small{line-height:1.45}
+@media(max-width:700px){.today-booking-grid{grid-template-columns:1fr}}
+
+
+.page-back-row{display:flex;align-items:center;gap:10px;margin:0 0 14px 0}
+.page-back-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid #d7dee8;border-radius:9px;background:#fff;font-weight:700;cursor:pointer}
+.page-back-btn:hover{transform:translateX(-1px)}
+
 </style>
 </head>
 <body class="auth-locked">
@@ -809,7 +825,18 @@ body.auth-locked #adminArea * {
   <div class="dashboard-section-title">Quick Access</div>
   <div class="quick-grid"><button class="quick-card" onclick="showAdminPage('shipments')"><b>📦 All Shipments</b><span>Bookings & status</span></button><button class="quick-card" onclick="showAdminPage('invoices')"><b>🧾 Invoices</b><span>Generate & verify</span></button><button class="quick-card" onclick="showAdminPage('cod')"><b>💰 Weekly COD</b><span>Create & pay</span></button><button class="quick-card" onclick="showAdminPage('payments')"><b>💳 Payments</b><span>Verify submissions</span></button></div>
  </div>
-<!-- NEW BOOKING / CLIENT NOTIFICATION QUEUE -->
+<!-- DEDICATED TODAY BOOKINGS DESK -->
+ <div class="card admin-page today-bookings-desk" id="adminTodayBookingsCard">
+  <div class="today-bookings-head">
+   <div>
+    <h2>📅 Today's Bookings</h2>
+    <div class="small">Only bookings created today. Separate from All Shipments.</div>
+   </div>
+   <div id="todayBookingsCount" class="today-bookings-count">0 bookings</div>
+  </div>
+  <div id="todayBookingsDesk">Loading...</div>
+ </div>
+ <!-- NEW BOOKING / CLIENT NOTIFICATION QUEUE -->
 <div class="card admin-page" id="adminNotificationCard">
  <div class="topbar">
   <div>
@@ -2958,6 +2985,7 @@ async function loadAdminBookings(){
         adminBookingData
     );
     renderAdminBookings();
+    renderTodayBookingsDesk();
     renderCancellationAlerts();
 }
 /* =========================================================
@@ -3682,6 +3710,8 @@ async function uploadLabelFile(
     UPDATE BOOKING
 ========================================================= */
 async function updateBooking(id){
+    const previousScrollY=window.scrollY;
+    openAdminDetailId=`admin-${id}`;
     const o =
     adminBookingData.find(
      x =>
@@ -3774,6 +3804,7 @@ msg(
 );
         await loadAdminBookings();
         await loadAdminStats();
+        requestAnimationFrame(()=>window.scrollTo({top:previousScrollY,behavior:"instant"}));
     }
     catch(e){
         msg(
@@ -4048,6 +4079,18 @@ function toggleAppMenu(id){
     el.classList.toggle('hidden');
 }
 function hideMenus(){document.querySelectorAll('.app-menu').forEach(m=>m.classList.add('hidden'));}
+function ensurePageBackButton(container, backHandler, label){
+    if(!container) return;
+    let row=container.querySelector(":scope > .page-back-row");
+    if(!row){
+        row=document.createElement("div");
+        row.className="page-back-row";
+        row.innerHTML=`<button type="button" class="page-back-btn">← Back</button><span class="small">${esc(label||"Dashboard")}</span>`;
+        row.querySelector("button").addEventListener("click",backHandler);
+        container.insertBefore(row,container.firstChild);
+    }
+}
+
 function showClientPage(page){
     hideMenus();
     document.querySelectorAll('#clientArea .app-page').forEach(x=>x.classList.remove('active'));
@@ -4067,7 +4110,14 @@ function showAdminPage(page){
       dashboard:'adminDashboardHome',clients:'adminClientsCard',shipments:'adminShipmentsCard',
       invoices:'adminInvoicesCard',cod:'adminCodCard',bank:'adminBankCard',support:'adminSupportBox'
     };
-    const id=map[page]; if(id)$(id)?.classList.add('active');
+    const id=map[page];
+    if(id){
+        const target=$(id);
+        target?.classList.add('active');
+        if(page!=='shipments'){
+            ensurePageBackButton(target,()=>showAdminPage('dashboard'),"Admin Dashboard");
+        }
+    }
     if(page==='payments'){
         $('adminInvoicesCard')?.classList.add('active');
         setTimeout(()=>document.getElementById('adminInvoiceHistory')?.scrollIntoView({behavior:'smooth',block:'start'}),50);
@@ -4090,7 +4140,48 @@ function renderClientDashboard(){
     ].map(x=>`<div class="dash-stat"><b>${x[0]}</b><strong>${x[1]}</strong></div>`).join('');
     if($('clientDashboardSummary'))$('clientDashboardSummary').innerHTML=`<div class="dash-mini"><b>Today</b><strong>${todayRows.length} bookings</strong><span class="small">Delivered ${todayRows.filter(o=>o.status==='Delivered').length} · RTO ${todayRows.filter(o=>o.status==='RTO').length}</span></div><div class="dash-mini"><b>This Week</b><strong>${weekRows.length} bookings</strong><span class="small">Delivered ${weekRows.filter(o=>o.status==='Delivered').length} · RTO ${weekRows.filter(o=>o.status==='RTO').length}</span></div>`;
 }
+function renderTodayBookingsDesk(){
+    const box=$("todayBookingsDesk");
+    const countBox=$("todayBookingsCount");
+    if(!box) return;
+
+    const today=getIndiaDate();
+    const rows=(adminBookingData||[])
+        .filter(o=>getOrderDate(o)===today)
+        .sort((a,b)=>new Date(b.created_at||0).getTime()-new Date(a.created_at||0).getTime());
+
+    if(countBox) countBox.textContent=`${rows.length} booking${rows.length===1?"":"s"}`;
+
+    if(!rows.length){
+        box.innerHTML='<div class="notice">No bookings created today.</div>';
+        return;
+    }
+
+    box.innerHTML=rows.map(o=>{
+        const amount=Number(o.total_charge||0).toFixed(2);
+        const created=o.created_at
+            ? new Date(o.created_at).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})
+            : "—";
+        return `
+        <div class="today-booking-item">
+          <div class="today-booking-top">
+            <div><b>${esc(o.order_id||"Booking")}</b> <span class="badge">${esc(o.status||"—")}</span></div>
+            <div class="small">${esc(created)}</div>
+          </div>
+          <div class="today-booking-grid">
+            <div class="small"><b>Client:</b> ${esc(clientName(o.client_id))}</div>
+            <div class="small"><b>Payment:</b> ${esc(o.payment_type||"—")} · <b>Total:</b> ₹${esc(amount)}</div>
+            <div class="small"><b>Pickup:</b> ${esc(o.pickup_name||"—")} · Pincode ${esc(o.pickup_pincode||"—")}</div>
+            <div class="small"><b>Customer:</b> ${esc(o.customer_name||"—")}</div>
+            <div class="small"><b>Delivery:</b> ${esc(o.delivery_address||"—")}</div>
+            <div class="small"><b>Delivery Pincode:</b> ${esc(o.delivery_pincode||"—")}</div>
+          </div>
+        </div>`;
+    }).join("");
+}
+
 function renderAdminDashboard(){
+    renderTodayBookingsDesk();
     const rows=adminBookingData||[], today=getIndiaDate();
     const transit=rows.filter(o=>['Picked Up','In Transit','Out for Delivery'].includes(o.status)).length;
     const newBookings=rows.filter(o=>o.status==='Booked').length;
