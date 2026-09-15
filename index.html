@@ -533,6 +533,8 @@ body.auth-locked #adminArea * {
    <button class="quick-card" onclick="showClientPage('invoices')"><b>🧾 Invoices</b><span>View & pay</span></button>
   </div>
   <div id="clientDashboardSummary" class="dashboard-mini-grid"></div>
+  <div class="dashboard-section-title">Recent Shipment Updates</div>
+  <div id="clientDashboardRecent" class="table-wrap"></div>
  </div>
  <!-- PROFILE -->
  <div id="clientProfileBox" class="card hidden">
@@ -822,6 +824,8 @@ body.auth-locked #adminArea * {
   <div class="dashboard-heading"><div><h2>Operations Overview</h2><div class="small">Your complete daily control centre.</div></div></div>
   <div id="adminDashStats" class="dashboard-stats admin-stats"></div>
   <div class="dashboard-section-title">ACTION REQUIRED</div><div id="adminActionRequired" class="action-list"></div>
+  <div class="dashboard-section-title">Client Performance</div>
+  <div id="adminClientPerformance" class="table-wrap"></div>
   <div class="dashboard-section-title">Quick Access</div>
   <div class="quick-grid"><button class="quick-card" onclick="showAdminPage('shipments')"><b>📦 All Shipments</b><span>Bookings & status</span></button><button class="quick-card" onclick="showAdminPage('invoices')"><b>🧾 Invoices</b><span>Generate & verify</span></button><button class="quick-card" onclick="showAdminPage('cod')"><b>💰 Weekly COD</b><span>Create & pay</span></button><button class="quick-card" onclick="showAdminPage('payments')"><b>💳 Payments</b><span>Verify submissions</span></button></div>
  </div>
@@ -3265,7 +3269,7 @@ return `
  class="details"
 >
  <div class="page-back-row booking-detail-back-row">
-  <button type="button" class="page-back-btn" onclick="toggleDetails('admin-${o.id}')">← Back to Shipments</button>
+  <button type="button" class="page-back-btn" onclick="closeAdminOrderDetail(${o.id})">← Back to Shipments</button>
   <span class="small">Shipment Details</span>
  </div>
  ${cancelNotice}
@@ -3631,6 +3635,13 @@ pending.map(
 /* =========================================================
     FOCUS ADMIN ORDER
 ========================================================= */
+function closeAdminOrderDetail(id){
+    const details=$("admin-"+id);
+    if(details) details.classList.remove("open");
+    openAdminDetailId=null;
+    const row=$("admin-order-"+id);
+    if(row) row.scrollIntoView({behavior:"smooth",block:"start"});
+}
 function focusAdminOrder(id){
     const el =
     $(`admin-order-${id}`);
@@ -3645,6 +3656,7 @@ function focusAdminOrder(id){
         details.classList.add(
             "open"
         );
+        openAdminDetailId=`admin-${id}`;
     }
 }
 /* =========================================================
@@ -4031,12 +4043,30 @@ function showClientPage(page){
     hideMenus();
     document.querySelectorAll('#clientArea .app-page').forEach(x=>x.classList.remove('active'));
     ['clientProfileBox','bookingBox','ordersBox','clientCodBox','clientInvoiceBox','clientSupportBox'].forEach(id=>$(id)?.classList.add('hidden'));
-    // Client should never see the dashboard; open shipment updates instead.
-    if(page==='dashboard') page='shipments';
-    const map={profile:'clientProfileBox',booking:'bookingBox',shipments:'ordersBox',reports:'ordersBox',cod:'clientCodBox',invoices:'clientInvoiceBox',support:'clientSupportBox'};
-    const id=map[page]; if(id){$(id)?.classList.remove('hidden');}
+    const map={
+      dashboard:'clientDashboardHome',
+      profile:'clientProfileBox',
+      booking:'bookingBox',
+      shipments:'ordersBox',
+      reports:'ordersBox',
+      cod:'clientCodBox',
+      invoices:'clientInvoiceBox',
+      support:'clientSupportBox'
+    };
+    const id=map[page];
+    if(!id) return;
+    const target=$(id);
+    target?.classList.add('active');
+    target?.classList.remove('hidden');
+    if(page!=='dashboard'){
+      const labels={
+        profile:'My Profile', booking:'New Booking', shipments:'My Shipments',
+        reports:'Reports & Statistics', cod:'Weekly COD Settlement',
+        invoices:'Invoices & Payments', support:'Support'
+      };
+      ensurePageBackButton(target,()=>showClientPage('dashboard'),labels[page]||'Dashboard');
+    }
     if(page==='reports'){
-        $('ordersBox')?.classList.remove('hidden');
         setTimeout(()=>document.getElementById('clientDailySummary')?.scrollIntoView({behavior:'smooth',block:'start'}),50);
     }
 }
@@ -4055,8 +4085,8 @@ function showAdminPage(page){
     if(id){
         const target=$(id);
         target?.classList.add('active');
-        if(page!=='shipments'){
-            ensurePageBackButton(target,()=>showAdminPage('dashboard'),"Admin Dashboard");
+        if(page!=='dashboard'){
+            ensurePageBackButton(target,()=>showAdminPage('dashboard'),page==='shipments'?'All Shipments':"Admin Dashboard");
         }
     }
     if(page==='payments'){
@@ -4080,6 +4110,10 @@ function renderClientDashboard(){
       ['Total Bookings',rows.length],['In Transit',count('picked up')+count('in transit')+count('out for delivery')],['Delivered',count('delivered')],['RTO',count('rto')]
     ].map(x=>`<div class="dash-stat"><b>${x[0]}</b><strong>${x[1]}</strong></div>`).join('');
     if($('clientDashboardSummary'))$('clientDashboardSummary').innerHTML=`<div class="dash-mini"><b>Today</b><strong>${todayRows.length} bookings</strong><span class="small">Delivered ${todayRows.filter(o=>o.status==='Delivered').length} · RTO ${todayRows.filter(o=>o.status==='RTO').length}</span></div><div class="dash-mini"><b>This Week</b><strong>${weekRows.length} bookings</strong><span class="small">Delivered ${weekRows.filter(o=>o.status==='Delivered').length} · RTO ${weekRows.filter(o=>o.status==='RTO').length}</span></div>`;
+    if($('clientDashboardRecent')){
+      const recent=[...rows].sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,6);
+      $('clientDashboardRecent').innerHTML=recent.length?`<table class="data-table"><thead><tr><th>Order</th><th>Status</th><th>Tracking</th><th>Date</th><th>Action</th></tr></thead><tbody>${recent.map(o=>`<tr><td><b>${esc(o.order_id||'—')}</b></td><td><span class="status-badge">${esc(o.status||'Booked')}</span></td><td>${esc(o.tracking_number||'Not added')}</td><td>${esc(formatDateIndia(getOrderDate(o)))}</td><td><button class="secondary" type="button" onclick="showClientPage('shipments')">VIEW</button></td></tr>`).join('')}</tbody></table>`:'<div class="notice">No shipments yet.</div>';
+    }
 }
 function renderTodayBookingsDesk(){
     const box=$("todayBookingsDesk");
@@ -4142,6 +4176,15 @@ function renderAdminDashboard(){
     const pendingCod=(adminWeeklyCodSettlements||[]).filter(x=>x.status!=='Paid').length;
     if(pendingCod)actions.push(['Weekly COD settlements pending',pendingCod,'cod']);
     if($('adminActionRequired'))$('adminActionRequired').innerHTML=actions.length?actions.map(a=>`<div class="action-item"><b>${esc(a[0])}</b><span>${a[1]}</span></div>`).join(''):'<div class="notice">✓ No urgent action right now.</div>';
+    if($('adminClientPerformance')){
+      const clients=[...(adminClientData||[])].sort((a,b)=>String(a.Client_name||'').localeCompare(String(b.Client_name||'')));
+      $('adminClientPerformance').innerHTML=clients.length?`<table class="data-table"><thead><tr><th>Client</th><th>Total</th><th>Delivered</th><th>In Transit</th><th>Pending</th><th>Action</th></tr></thead><tbody>${clients.map(c=>{const cr=rows.filter(o=>Number(o.client_id)===Number(c.id));const delivered=cr.filter(o=>o.status==='Delivered').length;const transit=cr.filter(o=>['Picked Up','In Transit','Out for Delivery'].includes(o.status)).length;const pending=cr.filter(o=>!['Delivered','Cancelled','RTO'].includes(o.status)).length;return `<tr><td><b>${esc(c.Client_name||'Client '+c.id)}</b><br><span class="small">${esc(c.client_number||'Client '+c.id)}</span></td><td>${cr.length}</td><td>${delivered}</td><td>${transit}</td><td>${pending}</td><td><button class="secondary" type="button" onclick="focusAdminClient(${Number(c.id)})">VIEW</button></td></tr>`;}).join('')}</tbody></table>`:'<div class="notice">No client accounts found.</div>';
+    }
+}
+function focusAdminClient(clientId){
+    if($('adminClientFilter'))$('adminClientFilter').value=String(clientId);
+    showAdminPage('shipments');
+    renderAdminBookings();
 }
 
 /* =========================================================
