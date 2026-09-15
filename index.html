@@ -458,6 +458,7 @@ body.auth-locked #adminArea * {
  <label>Password</label>
  <input id="loginPassword" type="password" placeholder="Enter password" autocomplete="new-password">
  <button type="button" class="primary" onclick="login()">LOGIN</button>
+ <button type="button" class="secondary" onclick="loginWithGoogle()">CONTINUE WITH GOOGLE</button>
  <button class="secondary" onclick="showSignup()">
   CREATE NEW CLIENT ACCOUNT
  </button>
@@ -1017,6 +1018,7 @@ supabase.createClient(
  SUPABASE_URL,
  SUPABASE_ANON_KEY
 );
+let authFlowBusy = false;
 
 /* =========================================================
    INSTANT TELEGRAM BOOKING NOTIFICATION
@@ -1222,79 +1224,97 @@ function getOrderDate(o){
     return getIndiaDate();
 }
 /* =========================================================
+    CLIENT ACCOUNT LINK / SELF-HEAL
+    The database RPC is the single source of truth for creating/linking a
+    client row. Signup, normal login, Google login and future recovery all
+    use the same path, so an Auth user cannot be left without a client row.
+========================================================= */
+async function ensureClientAccount(name="", mobile=""){
+    const u = currentUser || (await supabaseClient.auth.getUser()).data?.user;
+    if(!u?.email) throw new Error("Authenticated user email is missing.");
+    const meta = u.user_metadata || {};
+    const finalName = String(name || meta.full_name || meta.name || "Client").trim();
+    const finalMobile = String(mobile || meta.mobile || meta.phone || "").trim();
+    const {data,error}=await supabaseClient.rpc("ensure_my_client_account",{
+        p_name: finalName,
+        p_mobile: finalMobile || null
+    });
+    if(error) throw error;
+    if(!data) throw new Error("Client account could not be linked. Please contact BHAGWATI FULFIL support.");
+    return data;
+}
+
+async function loginWithGoogle(){
+    const btn=document.querySelector('button[onclick="loginWithGoogle()"]');
+    if(btn) btn.disabled=true;
+    try{
+        msg("loginMsg","Opening Google sign-in...");
+        const {error}=await supabaseClient.auth.signInWithOAuth({
+            provider:"google",
+            options:{redirectTo:window.location.origin+window.location.pathname}
+        });
+        if(error) msg("loginMsg",error.message,"error");
+    }catch(e){
+        msg("loginMsg",e?.message||"Google login failed. Please try again.","error");
+    }finally{
+        if(btn) btn.disabled=false;
+    }
+}
+
+/* =========================================================
     SIGNUP
 ========================================================= */
 async function signup(){
     const btn = document.querySelector('button[onclick="signup()"]');
     if(btn) btn.disabled = true;
+    authFlowBusy=true;
     try{
-    const name =
-    $("signupName").value.trim();
-const mobile =
-$("signupMobile").value.trim();
-const email =
-$("signupEmail").value.trim();
-const password =
-$("signupPassword").value;
-if(!name || !mobile || !email || !password){
-    return msg(
-     "signupMsg",
-     "Please fill all details.",
-     "error"
-    );
-}
-if(password.length < 6){
-    msg("signupMsg","Password must be at least 6 characters.","error");
-    return;
-}
-msg(
-    "signupMsg",
-    "Creating account..."
-);
-const {
-    data,
-    error
-}=
-await supabaseClient.auth.signUp({
-    email,
-    password,
-    options:{
-     data:{
-         full_name:name,
-         mobile
-     }
+        const name=$("signupName").value.trim();
+        const mobile=$("signupMobile").value.trim();
+        const email=$("signupEmail").value.trim().toLowerCase();
+        const password=$("signupPassword").value;
+        if(!name || !mobile || !email || !password){
+            msg("signupMsg","Please fill all details.","error");
+            return;
         }
-    });
-    if(error){
-        msg("signupMsg",error.message,"error");
-        return;
-    }
-    /* AUTO LOGIN: with Supabase Email Confirmation OFF, signUp returns a session.
-       If the project returns no session, try signing in immediately with the same
-       credentials. If confirmation is still enabled, Supabase will reject this and
-       the user is told exactly what setting must be changed. */
-    if(data?.session){
+        if(password.length<6){
+            msg("signupMsg","Password must be at least 6 characters.","error");
+            return;
+        }
+        msg("signupMsg","Creating client account...");
+        const {data,error}=await supabaseClient.auth.signUp({
+            email,
+            password,
+            options:{data:{full_name:name,mobile,account_type:"client"}}
+        });
+        if(error){
+            // Existing Auth account: give a useful path instead of leaving the
+            // user stuck on a generic registration error.
+            if(/already registered|already exists/i.test(error.message||"")){
+                msg("signupMsg","This email already has an account. Please use LOGIN or FORGOT PASSWORD.","error");
+            }else{
+                msg("signupMsg",error.message,"error");
+            }
+            return;
+        }
+        if(!data?.session){
+            const {data:loginData,error:loginError}=await supabaseClient.auth.signInWithPassword({email,password});
+            if(loginError || !loginData?.session){
+                msg("signupMsg","Account was created, but automatic login did not start. Please use LOGIN with the same email and password.","error");
+                return;
+            }
+        }
+        const {data:userData,error:userError}=await supabaseClient.auth.getUser();
+        if(userError || !userData?.user) throw userError || new Error("Account session could not be loaded.");
+        currentUser=userData.user;
+        await ensureClientAccount(name,mobile);
+        msg("signupMsg","Account created successfully. Opening your dashboard...");
         await loadUser();
-        return;
-    }
-
-    const { data:loginData, error:loginError } =
-        await supabaseClient.auth.signInWithPassword({ email, password });
-
-    if(!loginError && loginData?.session){
-        await loadUser();
-        return;
-    }
-
-    msg(
-        "signupMsg",
-        "Account created, but automatic login is blocked. Please turn OFF Confirm email in Supabase Authentication → Sign In / Providers → Email, then try again.",
-        "error"
-    );
     }catch(e){
-        msg("signupMsg",e?.message || "Unable to create account. Please try again.","error");
+        msg("signupMsg",e?.message||"Unable to create account. Please try again.","error");
     }finally{
-        if(btn) btn.disabled = false;
+        authFlowBusy=false;
+        if(btn) btn.disabled=false;
     }
 }
 /* =========================================================
@@ -1398,24 +1418,31 @@ history.replaceState(
 async function login(){
     const btn = document.querySelector('button[onclick="login()"]');
     if(btn) btn.disabled = true;
+    authFlowBusy=true;
     try{
-    const email = $("loginEmail").value.trim();
-    const password = $("loginPassword").value;
-    if(!email || !password){
-        msg("loginMsg","Enter email and password.","error");
-        return;
-    }
-    msg("loginMsg","Logging in...");
-    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    if(error){
-        msg("loginMsg",error.message,"error");
-        return;
-    }
-    await loadUser();
+        const email=$("loginEmail").value.trim().toLowerCase();
+        const password=$("loginPassword").value;
+        if(!email || !password){
+            msg("loginMsg","Enter email and password.","error");
+            return;
+        }
+        msg("loginMsg","Logging in...");
+        const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
+        if(error){
+            msg("loginMsg",error.message,"error");
+            return;
+        }
+        currentUser=data?.user || null;
+        if(!currentUser) throw new Error("Login session could not be loaded.");
+        // Self-heal: if the Auth user exists but the client row is missing,
+        // recreate/link it before the dashboard is opened.
+        await ensureClientAccount();
+        await loadUser();
     }catch(e){
-        msg("loginMsg",e?.message || "Login failed. Please try again.","error");
+        msg("loginMsg",e?.message||"Login failed. Please try again.","error");
     }finally{
-        if(btn) btn.disabled = false;
+        authFlowBusy=false;
+        if(btn) btn.disabled=false;
     }
 }
 /* =========================================================
@@ -1491,7 +1518,24 @@ try{
       .ilike("email", currentUser.email || "");
     if(ce) throw ce;
     if(!Array.isArray(emailMatches) || emailMatches.length!==1){
-        return msg("loginMsg",emailMatches?.length>1?"Account setup error: multiple client records use this email. Please contact BHAGWATI FULFIL support.":"This client email is not linked to a client account. Please contact BHAGWATI FULFIL support.","error");
+        if(emailMatches?.length>1){
+            return msg("loginMsg","Account setup error: multiple client records use this email. Please contact BHAGWATI FULFIL support.","error");
+        }
+        // Self-heal a missing client row. This protects existing Auth users
+        // from being locked out of the portal if a client row is ever missing.
+        try{
+            await ensureClientAccount();
+            const retry=await supabaseClient.from("clients")
+              .select('id,"Client_name",mobile,email,created_at,client_number,bank_holder_name,account_number,ifsc,upi_id,is_locked,bank_edit_allowed,profile_edit_allowed')
+              .ilike("email", currentUser.email || "");
+            if(retry.error) throw retry.error;
+            emailMatches=retry.data||[];
+        }catch(repairError){
+            return msg("loginMsg","Your login is valid, but client account setup could not be repaired: "+(repairError?.message||"Please contact BHAGWATI FULFIL support."),"error");
+        }
+        if(emailMatches.length!==1){
+            return msg("loginMsg","Client account could not be linked safely. Please contact BHAGWATI FULFIL support.","error");
+        }
     }
     currentProfile.client_id=Number(emailMatches[0].id);
     // If the profile was created with the old/default client name, sync the
@@ -4447,48 +4491,67 @@ function safe(url){
 /* =========================================================
      AUTH STATE
 ========================================================= */
-supabaseClient
-.auth
-.onAuthStateChange(
-    async e=>{
-        if(
-            e==="SIGNED_OUT"
-        ){
-            document.body.classList.add("auth-locked");
-            stopAdminAutoRefresh();
-            currentUser=null;
-            currentProfile=null;
-            currentClient=null;
-            clientArea
-            .classList
-            .add("hidden");
-            adminArea
-            .classList
-            .add("hidden");
-            showLogin();
-        }
+supabaseClient.auth.onAuthStateChange(async (event,session)=>{
+    if(event==="SIGNED_OUT"){
+        document.body.classList.add("auth-locked");
+        stopAdminAutoRefresh();
+        currentUser=null; currentProfile=null; currentClient=null;
+        clientArea.classList.add("hidden");
+        adminArea.classList.add("hidden");
+        showLogin();
+        return;
     }
-);
+    // OAuth (Google) returns to this page with a live session. Handle it here.
+    if(event==="SIGNED_IN" && session && !authFlowBusy){
+        try{
+            authFlowBusy=true;
+            currentUser=session.user;
+            try{
+                await ensureClientAccount();
+            }catch(firstError){
+                // New Google users may not have a mobile number in Google profile data.
+                const needsMobile=/mobile|phone|not-null|null value/i.test(firstError?.message||"");
+                if(needsMobile && !currentUser.user_metadata?.mobile){
+                    const mobile=prompt("Enter your mobile number to finish your BHAGWATI FULFIL client account:","");
+                    if(!mobile?.trim()) throw new Error("Mobile number is required to finish client account setup.");
+                    await ensureClientAccount(currentUser.user_metadata?.full_name||currentUser.user_metadata?.name||"Client",mobile.trim());
+                }else{
+                    throw firstError;
+                }
+            }
+            await loadUser();
+        }catch(e){
+            msg("loginMsg",e?.message||"Account setup failed. Please try again.","error");
+        }finally{
+            authFlowBusy=false;
+        }
+    }});
 /* =========================================================
      PAGE LOAD
 ========================================================= */
-document.addEventListener(
- "DOMContentLoaded",
- async ()=>{
-     paymentChanged();
-     // Always show the login screen first. A previous Supabase session
-     // must not expose the client/admin dashboard before the user logs in.
-     showLogin();
-     // Only resume a password-recovery session when Supabase sent the
-     // recovery link back to this page.
-     if(location.hash && /type=recovery|access_token=/.test(location.hash)){
-         const {data} = await supabaseClient.auth.getSession();
-         if(data?.session){
-             showReset();
-         }
-     }
- }
-);
+document.addEventListener("DOMContentLoaded",async()=>{
+    paymentChanged();
+    showLogin();
+    if(location.hash && /type=recovery|access_token=/.test(location.hash)){
+        const {data}=await supabaseClient.auth.getSession();
+        if(data?.session){ showReset(); return; }
+    }
+    // Resume an existing valid session after refresh instead of forcing the
+    // client to log in again. The user is still verified through getUser().
+    try{
+        const {data,error}=await supabaseClient.auth.getUser();
+        if(!error && data?.user){
+            authFlowBusy=true;
+            currentUser=data.user;
+            await ensureClientAccount();
+            await loadUser();
+            authFlowBusy=false;
+        }
+    }catch(e){
+        authFlowBusy=false;
+        showLogin();
+    }
+});
 </script>
 </body>
 </html>
