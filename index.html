@@ -3992,48 +3992,84 @@ async function markAwbAdded(id){
 
 async function loadAdminNotifications(){
     const box=$("adminNotifications");
+    const summary=$("adminNotificationSummary");
     if(!box) return;
+    if(currentProfile?.role!=="admin"){
+        box.innerHTML='<div class="notice error">Admin access required.</div>';
+        if(summary) summary.innerHTML="";
+        return;
+    }
+
     const {data,error}=await supabaseClient
         .from("admin_booking_tasks")
         .select("*")
         .order("created_at",{ascending:false});
+
     if(error){
-        box.innerHTML=`<div class="notice error"><b>Booking notification queue error</b><br>${esc(error.message)}<br><span class="small">The booking itself may still be saved. This is an admin task-queue read error, not a client login error.</span></div>`;
+        box.innerHTML=`<div class="notice error"><b>Booking queue could not be loaded.</b><br>${esc(error.message||"Unknown error")}<br><span class="small">No booking data was changed.</span></div>`;
+        if(summary) summary.innerHTML="";
         return;
     }
-    const rows=data||[];
+
+    const rows=Array.isArray(data)?data:[];
     window.adminNotificationRows=rows;
+
+    const bookingIds=rows.map(t=>Number(t.booking_id)).filter(Number.isFinite);
+    let bookingMap={};
+    if(bookingIds.length){
+        const {data:bookingRows}=await supabaseClient
+            .from("bookings")
+            .select("*")
+            .in("id",bookingIds);
+        (bookingRows||[]).forEach(b=>{bookingMap[String(b.id)]=b;});
+    }
+
     const fresh=rows.filter(x=>x.status==="New").length;
     const pending=rows.filter(x=>x.status==="Genz Booking Pending").length;
     const booked=rows.filter(x=>x.status==="Genz Booked").length;
     const awb=rows.filter(x=>x.status==="AWB Added").length;
-    $("adminNotificationSummary").innerHTML=`
+
+    if(summary) summary.innerHTML=`
       <div class="ratebox"><b>🔴 New</b><h2>${fresh}</h2></div>
       <div class="ratebox"><b>🟠 Genz Pending</b><h2>${pending}</h2></div>
       <div class="ratebox"><b>🔵 Genz Booked</b><h2>${booked}</h2></div>
       <div class="ratebox"><b>🟢 AWB Added</b><h2>${awb}</h2></div>`;
-    if(!rows.length){ box.innerHTML='<div class="notice">No booking tasks yet.</div>'; return; }
+
+    if(!rows.length){
+        box.innerHTML='<div class="notice">No booking tasks yet.</div>';
+        return;
+    }
+
+    const fmtMoney=v=>`₹${Number(v||0).toFixed(2)}`;
+    const fmtDate=v=>v?new Date(v).toLocaleString("en-IN"):"—";
+
     box.innerHTML=rows.map(t=>{
+        const b=bookingMap[String(t.booking_id)]||{};
         const isNew=t.status==="New";
         const isPending=t.status==="Genz Booking Pending";
         const isBooked=t.status==="Genz Booked";
-        return `<div class="shipment-row" style="margin-bottom:10px;">
+        const dims=[b.length_cm,b.width_cm,b.height_cm].every(v=>v!==null&&v!==undefined&&v!=="")
+          ? `${esc(b.length_cm)} × ${esc(b.width_cm)} × ${esc(b.height_cm)} cm` : "—";
+        return `<div class="shipment-row" style="margin-bottom:14px;">
           <div class="shipment-summary">
             <div>
-              <b>${esc(t.order_id||"")}</b><br>
+              <b>${esc(t.order_id||b.order_id||"Booking")}</b><br>
               <span class="small">${esc(t.client_name||("Client "+(t.client_id||"")))}</span>
             </div>
             <div>${adminTaskBadge(t.status)}</div>
           </div>
-          <div class="small" style="margin-top:8px;">
-            ${esc(t.created_at ? new Date(t.created_at).toLocaleString("en-IN") : "")} · ${esc(t.payment_type||"")} · COD ₹${Number(t.parcel_value||0).toFixed(2)}<br>
-            Pickup ${esc(t.pickup_pincode||"")} → Delivery ${esc(t.delivery_pincode||"")}
+          <div class="small" style="margin-top:8px;line-height:1.6;">
+            <b>Booking:</b> ${esc(fmtDate(t.created_at))} · ${esc(b.payment_type||t.payment_type||"—")} · Parcel ${fmtMoney(b.parcel_value??t.parcel_value)} · ${esc(b.zone||"—")}<br>
+            <b>Pickup:</b> ${esc(b.pickup_name||"—")} · ${esc(b.pickup_mobile||"—")} · ${esc(b.pickup_pincode||t.pickup_pincode||"—")}<br>
+            <b>Delivery:</b> ${esc(b.customer_name||"—")} · ${esc(b.customer_mobile||"—")} · ${esc(b.delivery_pincode||t.delivery_pincode||"—")}<br>
+            <b>Package:</b> ${esc(b.actual_weight_g!=null?String(b.actual_weight_g)+" g":"—")} · ${dims} · Chargeable ${esc(b.chargeable_weight_kg!=null?String(b.chargeable_weight_kg)+" kg":"—")}<br>
+            <b>Charges:</b> Shipping ${fmtMoney(b.shipping_charge)} · COD ${fmtMoney(b.cod_charge)} · Total ${fmtMoney(b.total_charge)}
           </div>
           <div class="actions" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-            ${isNew ? `<button onclick="checkNewBooking(${Number(t.id)})">✅ CHECK</button>` : ""}
-            ${isNew ? `<button class="secondary" onclick='sendBookingWhatsApp(${JSON.stringify(t).replace(/'/g,"&#39;")})'>📲 WhatsApp</button>` : ""}
-            ${isPending ? `<button onclick="markGenzBooked(${Number(t.id)})">📦 GENZ BOOKED</button>` : ""}
-            ${isBooked ? `<button onclick="markAwbAdded(${Number(t.id)})">🏷️ AWB ADDED</button>` : ""}
+            ${isNew ? `<button type="button" onclick="checkNewBooking(${Number(t.id)})">✅ CHECK</button>` : ""}
+            ${isNew ? `<button type="button" class="secondary" onclick='sendBookingWhatsApp(${JSON.stringify(t).replace(/'/g,"&#39;")})'>📲 WhatsApp</button>` : ""}
+            ${isPending ? `<button type="button" onclick="markGenzBooked(${Number(t.id)})">📦 GENZ BOOKED</button>` : ""}
+            ${isBooked ? `<button type="button" onclick="markAwbAdded(${Number(t.id)})">🏷️ AWB ADDED</button>` : ""}
           </div>
         </div>`;
     }).join("");
