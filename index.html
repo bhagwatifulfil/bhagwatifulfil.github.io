@@ -556,7 +556,8 @@ body.auth-locked #adminArea * {
   </div>
  <h3>COD Settlement Bank Details</h3>
  <div class="notice">
-  These details are stored once and are used for COD settlement.
+  Enter your bank details once for weekly COD settlement. After saving, these details are locked.
+  Any change requires Admin permission.
  </div>
  <div class="grid">
   <div>
@@ -579,9 +580,7 @@ body.auth-locked #adminArea * {
  <button class="success" type="button" id="saveProfileBtn" onclick="saveProfile()">
   SAVE PROFILE
  </button>
- <button class="secondary hidden" type="button" id="editBankBtn" onclick="requestBankEdit()">
-  REQUEST BANK DETAIL CHANGE
- </button>
+ <div id="bankLockNote" class="small" style="margin-top:8px"></div>
  <div id="profileMsg"></div>
 </div>
 <!-- BOOKING -->
@@ -788,6 +787,10 @@ body.auth-locked #adminArea * {
 <div id="clientCodBox" class="card hidden">
  <div class="topbar"><div><h2>Weekly COD Settlement</h2><div class="small">COD collected Monday–Saturday is settled as one weekly payment.</div></div></div>
  <div id="clientCodSummary" class="settlement-grid"></div>
+ <div class="ratebox" style="margin:14px 0">
+  <div class="topbar"><div><h3 style="margin:0">COD Settlement Bank Account</h3><div class="small">This is the bank account BHAGWATI FULFIL will use for your weekly COD payout.</div></div><button class="secondary" type="button" onclick="showClientPage('profile')">VIEW / EDIT PROFILE</button></div>
+  <div id="clientSettlementBankDetails" class="small" style="margin-top:10px">Loading bank details...</div>
+ </div>
  <div id="clientWeeklyCodHistory">Loading...</div>
  <h3>Parcel-wise COD History</h3><div id="clientCodHistory">Loading...</div>
 </div>
@@ -968,7 +971,8 @@ body.auth-locked #adminArea * {
 <!-- WEEKLY COD SETTLEMENT ADMIN -->
 <div class="card admin-page" id="adminCodCard">
  <div class="topbar"><div><h2>Weekly COD Settlement</h2><div class="small">One consolidated Monday–Saturday COD payout per client.</div></div><button class="secondary" type="button" onclick="loadAdminWeeklyCod()">REFRESH</button></div>
- <div class="grid"><div><label>Client</label><select id="weeklyCodClient"><option value="">Select Client</option></select></div><div><label>Week</label><select id="weeklyCodWeek"></select></div></div>
+ <div class="grid"><div><label>Client</label><select id="weeklyCodClient" onchange="showSelectedWeeklyCodClientBank()"><option value="">Select Client</option></select></div><div><label>Week</label><select id="weeklyCodWeek"></select></div></div>
+ <div id="weeklyCodBankDetails" class="notice" style="margin:12px 0">Select a client to view the COD settlement bank details.</div>
  <button class="primary" type="button" onclick="createWeeklyCod()">CREATE WEEKLY COD</button><div id="weeklyCodMsg"></div><div id="adminWeeklyCodHistory">Loading...</div>
 </div>
 <!-- BUSINESS PAYMENT SETTINGS -->
@@ -1662,7 +1666,11 @@ function applyProfileLocks(data){
     const profileCanEdit=!profileSaved||!!data?.profile_edit_allowed, bankCanEdit=!bankSaved||!!data?.bank_edit_allowed;
     ["profileName","profileMobile"].forEach(id=>{const el=$(id);if(el)el.disabled=!profileCanEdit;});
     ["bankHolder","accountNumber","ifsc","upiId"].forEach(id=>{const el=$(id);if(el)el.disabled=!bankCanEdit;});
-    const edit=$("editBankBtn"); if(edit){edit.classList.toggle("hidden",!bankSaved);edit.textContent=bankCanEdit?"BANK EDIT PERMISSION ACTIVE":"BANK DETAILS LOCKED — ADMIN PERMISSION REQUIRED";}
+    const note=$("bankLockNote"); if(note){
+        note.textContent = bankCanEdit
+          ? "Admin permission is active. You can update these bank details now. After saving, they will be locked again."
+          : (bankSaved ? "Bank details are LOCKED. Only Admin can allow a change." : "You can add your bank details now. They will be locked after the first successful save.");
+    }
 }
 function applyBankLock(data){applyProfileLocks(data);}
 function requestBankEdit(){msg("profileMsg","Bank details are locked. Ask Admin to use ALLOW BANK EDIT.","error");}
@@ -2919,20 +2927,11 @@ adminClientData
  <button class="secondary" type="button" onclick="toggleClientProfileEdit(${Number(c.id)},${!c.profile_edit_allowed})">${c.profile_edit_allowed ? "REVOKE PROFILE EDIT" : "ALLOW PROFILE EDIT"}</button>
 </div>
 <div class="client-permission-row">
- <span class="status ${c.bank_edit_allowed ? "status-pending" : "status-paid"}">Bank Edit: ${c.bank_edit_allowed ? "ALLOWED" : "LOCKED"}</span>
- <button class="secondary" type="button" onclick="toggleClientBankEdit(${Number(c.id)},${!c.bank_edit_allowed})">${c.bank_edit_allowed ? "REVOKE BANK EDIT" : "ALLOW BANK EDIT"}</button>
+ <span class="status ${c.bank_edit_allowed ? "status-pending" : "status-paid"}">Bank Details: ${c.bank_edit_allowed ? "EDIT ALLOWED" : "LOCKED"}</span>
+ <button class="secondary" type="button" onclick="toggleClientBankEdit(${Number(c.id)},${!c.bank_edit_allowed})">${c.bank_edit_allowed ? "REVOKE EDIT" : "ALLOW EDIT"}</button>
 </div>
-<button
- class="client-bank-toggle"
- onclick="toggleBankDetails('bank-${c.id}')"
->
- ⋮ Bank Details
-</button>
-<div
- id="bank-${c.id}"
- class="client-bank hidden"
->
- <b>COD Bank Details</b>
+<div class="client-bank" style="margin-top:10px;padding:12px;border:1px solid #e5e7eb;border-radius:10px">
+ <b>COD Settlement Bank Details</b>
  <p>
     Account Holder:
     ${esc(
@@ -4280,9 +4279,12 @@ function mondayOf(dateString){const d=new Date(String(dateString).slice(0,10)+"T
 function saturdayOfMonday(mon){return addDaysISO(mon,5);}
 function weeklyPeriods(count=16){const cur=mondayOf(getIndiaDate()),out=[],d=new Date(cur+"T00:00:00");for(let i=0;i<count;i++){const m=new Date(d);m.setDate(d.getDate()-7*i);const mon=[m.getFullYear(),String(m.getMonth()+1).padStart(2,"0"),String(m.getDate()).padStart(2,"0")].join("-");out.push({start:mon,end:saturdayOfMonday(mon)});}return out;}
 function fillWeeklyPeriodSelect(){const el=$("weeklyCodWeek");if(!el)return;const old=el.value;el.innerHTML=weeklyPeriods().map((w,i)=>`<option value="${w.start}|${w.end}">${formatDateIndia(w.start)} – ${formatDateIndia(w.end)}${i===0?' (Current Week)':''}</option>`).join("");if(old)el.value=old;}
-function fillWeeklyCodClients(){const el=$("weeklyCodClient");if(!el)return;const old=el.value;el.innerHTML='<option value="">Select Client</option>'+adminClientData.map(c=>`<option value="${escAttr(c.id)}">${esc(c.client_number||("Client "+c.id))} - ${esc(c.Client_name||"")}</option>`).join("");if(old)el.value=old;}
+function fillWeeklyCodClients(){const el=$("weeklyCodClient");if(!el)return;const old=el.value;el.innerHTML='<option value="">Select Client</option>'+adminClientData.map(c=>`<option value="${escAttr(c.id)}">${esc(c.client_number||("Client "+c.id))} - ${esc(c.Client_name||"")}</option>`).join("");if(old)el.value=old;showSelectedWeeklyCodClientBank();}
+function showSelectedWeeklyCodClientBank(){const el=$("weeklyCodClient"),box=$("weeklyCodBankDetails");if(!box)return;const cid=Number(el?.value||0);if(!cid){box.className="notice";box.innerHTML="Select a client to view the COD settlement bank details.";return;}const c=(adminClientData||[]).find(x=>Number(x.id)===cid);if(!c){box.className="notice error";box.textContent="Client details not found.";return;}const holder=c.bank_holder_name||"",account=c.account_number||"",ifsc=c.ifsc||"",upi=c.upi_id||"";if(!holder||!account||!ifsc){box.className="notice error";box.innerHTML=`<b>Bank details missing.</b><br>Client must open <b>My Profile → COD Settlement Bank Details</b> and save Account Holder, Account Number and IFSC before this weekly COD can be created.`;return;}box.className="notice";box.innerHTML=`<b>COD payout account</b><br>Account Holder: ${esc(holder)}<br>Account Number: ${esc(account)}<br>IFSC: ${esc(ifsc)}${upi?`<br>UPI ID: ${esc(upi)}`:""}`;}
 async function syncCodSettlementForBooking(id,finalStatus){if(finalStatus!=="Delivered")return;const{data:o,error}=await supabaseClient.from("bookings").select("id,client_id,order_id,payment_type,parcel_value,delivered_at,status").eq("id",id).single();if(error||!o||o.payment_type!=="COD"||o.status!=="Delivered")return;const deliveredAt=o.delivered_at||new Date().toISOString(),payload={client_id:o.client_id,booking_id:o.id,order_id:o.order_id,cod_amount:Number(o.parcel_value||0),delivered_at:deliveredAt,status:"Pending"};const{data:existing}=await supabaseClient.from("cod_settlements").select("id,status").eq("booking_id",o.id).maybeSingle();if(existing){if(existing.status!=="Paid")await supabaseClient.from("cod_settlements").update(payload).eq("id",existing.id);}else await supabaseClient.from("cod_settlements").insert(payload);}
-async function loadClientPayments(){if(!currentProfile?.client_id)return;$("clientCodBox")?.classList.remove("hidden");$("clientInvoiceBox")?.classList.remove("hidden");const cid=Number(currentProfile.client_id);const[cs,ins,ps,ws]=await Promise.all([supabaseClient.from("cod_settlements").select("*").eq("client_id",cid).order("created_at",{ascending:false}),supabaseClient.from("client_invoices").select("*").eq("client_id",cid).eq("approval_status","Sent").order("created_at",{ascending:false}),supabaseClient.from("client_payment_submissions").select("*").eq("client_id",cid).order("created_at",{ascending:false}),supabaseClient.from("weekly_cod_settlements").select("*").eq("client_id",cid).order("period_start",{ascending:false})]);if(cs.error)$("clientCodHistory").innerHTML=`<div class="notice error">${esc(cs.error.message)}</div>`;else{clientCodSettlements=cs.data||[];renderClientCodHistory();}if(ws.error)$("clientWeeklyCodHistory").innerHTML=`<div class="notice error">${esc(ws.error.message)}</div>`;else{clientWeeklyCodSettlements=ws.data||[];renderClientWeeklyCodHistory();}if(ins.error)$("clientInvoiceHistory").innerHTML=`<div class="notice error">${esc(ins.error.message)}</div>`;else{clientInvoices=(ins.data||[]).filter(x=>(x.approval_status||"Sent")==="Sent");renderClientInvoiceHistory();populateClientPayInvoices();}await loadBusinessPaymentSettings();}
+async function loadClientPayments(){if(!currentProfile?.client_id)return;$("clientCodBox")?.classList.remove("hidden");$("clientInvoiceBox")?.classList.remove("hidden");const cid=Number(currentProfile.client_id);const[cs,ins,ps,ws]=await Promise.all([supabaseClient.from("cod_settlements").select("*").eq("client_id",cid).order("created_at",{ascending:false}),supabaseClient.from("client_invoices").select("*").eq("client_id",cid).eq("approval_status","Sent").order("created_at",{ascending:false}),supabaseClient.from("client_payment_submissions").select("*").eq("client_id",cid).order("created_at",{ascending:false}),supabaseClient.from("weekly_cod_settlements").select("*").eq("client_id",cid).order("period_start",{ascending:false})]);if(cs.error)$("clientCodHistory").innerHTML=`<div class="notice error">${esc(cs.error.message)}</div>`;else{clientCodSettlements=cs.data||[];renderClientCodHistory();}if(ws.error)$("clientWeeklyCodHistory").innerHTML=`<div class="notice error">${esc(ws.error.message)}</div>`;else{clientWeeklyCodSettlements=ws.data||[];renderClientWeeklyCodHistory();}if(ins.error)$("clientInvoiceHistory").innerHTML=`<div class="notice error">${esc(ins.error.message)}</div>`;else{clientInvoices=(ins.data||[]).filter(x=>(x.approval_status||"Sent")==="Sent");renderClientInvoiceHistory();populateClientPayInvoices();}renderClientSettlementBankDetails();await loadBusinessPaymentSettings();}
+function renderClientSettlementBankDetails(){const box=$("clientSettlementBankDetails");if(!box)return;const c=currentClient||{};const holder=c.bank_holder_name||"",account=c.account_number||"",ifsc=c.ifsc||"",upi=c.upi_id||"";if(!holder||!account||!ifsc){box.innerHTML=`<div class="notice error">Bank details are not saved yet. Please open <b>My Profile</b> and save Account Holder Name, Account Number and IFSC. Weekly COD payout cannot be completed until these details are available.</div>`;return;}box.innerHTML=`<b>Account Holder:</b> ${esc(holder)} &nbsp; <b>Account Number:</b> ${esc(account)} &nbsp; <b>IFSC:</b> ${esc(ifsc)}${upi?` &nbsp; <b>UPI:</b> ${esc(upi)}`:""}`;}
+
 function populateClientPayInvoices(){const el=$("clientPayInvoice");if(!el)return;const pending=(clientInvoices||[]).filter(x=>x.payment_status!=="Paid");el.innerHTML='<option value="">Select pending invoice</option>'+pending.map(x=>`<option value="${escAttr(x.id)}" data-amount="${Number(x.total_amount||0)}">${esc(x.invoice_no)} — ${money(x.total_amount)}</option>`).join("");el.onchange=()=>{const o=el.options[el.selectedIndex];const amt=Number(o?.dataset?.amount||0);$("clientPayAmount").value=amt||"";if($("quickPayAmount"))$("quickPayAmount").textContent=money(amt);};$("clientPayDate").value=getIndiaDate();if($("quickPayAmount"))$("quickPayAmount").textContent="₹0.00";}
 async function submitClientPayment(){if(currentProfile?.role!=="client")return;const invoiceId=Number($("clientPayInvoice")?.value),amount=Number($("clientPayAmount")?.value),date=$("clientPayDate")?.value,utr=$("clientPayUtr")?.value.trim();if(!invoiceId||!amount||!date||!utr)return msg("clientPayMsg","Select an invoice and enter payment date and UTR.","error");const invoice=(clientInvoices||[]).find(x=>Number(x.id)===invoiceId);if(!invoice)return msg("clientPayMsg","Invoice not found.","error");if(Number(invoice.total_amount)!==amount)return msg("clientPayMsg","Payment amount does not match invoice amount.","error");const{data:existing}=await supabaseClient.from("client_payment_submissions").select("id").eq("invoice_id",invoiceId).eq("status","Pending").maybeSingle();if(existing)return msg("clientPayMsg","Payment already submitted and is waiting for verification.","error");const btn=document.querySelector('button[onclick="submitClientPayment()"]');if(btn)btn.disabled=true;try{const{error}=await supabaseClient.from("client_payment_submissions").insert({client_id:Number(currentProfile.client_id),invoice_id:invoiceId,amount,payment_date:date,utr,status:"Pending"});if(error)return msg("clientPayMsg",error.message,"error");msg("clientPayMsg","Payment submitted. Admin will verify and mark the invoice Paid.","ok");$("clientPayUtr").value="";await loadClientPayments();}finally{if(btn)btn.disabled=false;}}
 function getSelectedInvoiceForQuickPay(){const id=Number($("clientPayInvoice")?.value);const inv=(clientInvoices||[]).find(x=>Number(x.id)===id);if(!inv||inv.payment_status==="Paid")return null;return inv;}
@@ -4329,8 +4331,25 @@ function printClientInvoice(id){
 function invoicePeriodDefault(){const today=getIndiaDate(),d=new Date(today+"T00:00:00"),day=d.getDay(),mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));const sat=new Date(mon);sat.setDate(mon.getDate()+5);const iso=x=>[x.getFullYear(),String(x.getMonth()+1).padStart(2,'0'),String(x.getDate()).padStart(2,'0')].join('-');return[iso(mon),iso(sat)];}
 function populateInvoiceClients(){fillWeeklyCodClients();fillWeeklyPeriodSelect();const options='<option value="">Select Client</option>'+adminClientData.map(c=>`<option value="${escAttr(c.id)}">${esc(c.client_number||("Client "+c.id))} - ${esc(c.Client_name||"")}</option>`).join('');if($("invoiceClient"))$("invoiceClient").innerHTML=options;if($("invoiceStart")&&!$("invoiceStart").value){const[a,b]=invoicePeriodDefault();$("invoiceStart").value=a;$("invoiceEnd").value=b;}}
 async function ensureAllCodSettlements(){if(currentProfile?.role!=="admin")return;const delivered=adminBookingData.filter(o=>o.payment_type==="COD"&&o.status==="Delivered");if(!delivered.length)return;const{data:existing}=await supabaseClient.from("cod_settlements").select("booking_id").in("booking_id",delivered.map(o=>o.id));const have=new Set((existing||[]).map(x=>Number(x.booking_id)));const missing=delivered.filter(o=>!have.has(Number(o.id))).map(o=>({client_id:o.client_id,booking_id:o.id,order_id:o.order_id,cod_amount:Number(o.parcel_value||0),delivered_at:o.delivered_at||new Date().toISOString(),status:"Pending"}));if(missing.length)await supabaseClient.from("cod_settlements").insert(missing);}
-async function loadAdminWeeklyCod(){if(currentProfile?.role!=="admin")return;await ensureAllCodSettlements();const{data,error}=await supabaseClient.from("weekly_cod_settlements").select("*").order("period_start",{ascending:false});if(error){$("adminWeeklyCodHistory").innerHTML=`<div class="notice error">${esc(error.message)}</div>`;return;}adminWeeklyCodSettlements=data||[];populateInvoiceClients();const rows=adminWeeklyCodSettlements,pending=rows.filter(x=>x.status!=="Paid").reduce((a,x)=>a+Number(x.total_cod_amount||0),0),paid=rows.filter(x=>x.status==="Paid").reduce((a,x)=>a+Number(x.total_cod_amount||0),0);$("adminWeeklyCodHistory").innerHTML=`<div class="settlement-grid"><div class="ratebox"><b>COD Pending</b><div class="money">${money(pending)}</div></div><div class="ratebox"><b>COD Paid</b><div class="money">${money(paid)}</div></div><div class="ratebox"><b>Weekly Settlements</b><div class="money">${rows.length}</div></div><div class="ratebox"><b>Pending Weeks</b><div class="money">${rows.filter(x=>x.status!=="Paid").length}</div></div></div>${rows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Client</th><th>Week</th><th>Parcels</th><th>COD Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(clientName(x.client_id))}<br><span class="small">${esc(clientNo(x.client_id))}</span></td><td>${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}</td><td>${Number(x.parcel_count||0)}</td><td>${money(x.total_cod_amount)}</td><td><span class="badge ${x.status==='Paid'?'status-paid':'status-pending'}">${esc(x.status)}</span></td><td>${x.status==='Paid'?`<span class="small">Paid ${x.paid_at?esc(formatDateIndia(String(x.paid_at).slice(0,10))):''}<br>UTR: ${esc(x.payment_reference||'—')}</span>`:`<button class="success" type="button" onclick="markWeeklyCodPaid(${x.id})">MARK WEEKLY COD PAID</button>`}</td></tr>`).join('')}</tbody></table></div>`:'<div class="notice">No weekly COD settlements yet.</div>'}`;}
-async function createWeeklyCod(){if(currentProfile?.role!=="admin")return;const cid=Number($("weeklyCodClient")?.value),parts=($("weeklyCodWeek")?.value||'').split('|');if(!cid||parts.length!==2)return msg("weeklyCodMsg","Select client and Monday–Saturday week.","error");const{data,error}=await supabaseClient.rpc("create_weekly_cod_settlement",{p_client_id:cid,p_period_start:parts[0],p_period_end:parts[1]});if(error)return msg("weeklyCodMsg",error.message,"error");msg("weeklyCodMsg",`Weekly COD settlement created successfully (ID ${data}).`,"ok");await loadAdminWeeklyCod();}
+function adminWeeklyCodBankHtml(clientId){
+ const c=(adminClientData||[]).find(v=>Number(v.id)===Number(clientId))||{};
+ if(!c.bank_holder_name||!c.account_number||!c.ifsc) return '<span class="badge status-pending">BANK DETAILS MISSING</span>';
+ return '<span class="small"><b>'+esc(c.bank_holder_name)+'</b><br>'+esc(c.account_number)+'<br>'+esc(c.ifsc)+(c.upi_id?'<br>'+esc(c.upi_id):'')+'</span>';
+}
+async function loadAdminWeeklyCod(){
+ if(currentProfile?.role!=="admin")return;
+ await ensureAllCodSettlements();
+ const {data,error}=await supabaseClient.from("weekly_cod_settlements").select("*").order("period_start",{ascending:false});
+ if(error){$("adminWeeklyCodHistory").innerHTML=`<div class="notice error">${esc(error.message)}</div>`;return;}
+ adminWeeklyCodSettlements=data||[];
+ populateInvoiceClients();
+ const rows=adminWeeklyCodSettlements;
+ const pending=rows.filter(x=>x.status!=="Paid").reduce((a,x)=>a+Number(x.total_cod_amount||0),0);
+ const paid=rows.filter(x=>x.status==="Paid").reduce((a,x)=>a+Number(x.total_cod_amount||0),0);
+ const table=rows.map(x=>`<tr><td>${esc(clientName(x.client_id))}<br><span class="small">${esc(clientNo(x.client_id))}</span></td><td>${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}</td><td>${Number(x.parcel_count||0)}</td><td>${money(x.total_cod_amount)}</td><td>${adminWeeklyCodBankHtml(x.client_id)}</td><td><span class="badge ${x.status==='Paid'?'status-paid':'status-pending'}">${esc(x.status)}</span></td><td>${x.status==='Paid'?`<span class="small">Paid ${x.paid_at?esc(formatDateIndia(String(x.paid_at).slice(0,10))):''}<br>UTR: ${esc(x.payment_reference||'—')}</span>`:`<button class="success" type="button" onclick="markWeeklyCodPaid(${x.id})">MARK WEEKLY COD PAID</button>`}</td></tr>`).join('');
+ $("adminWeeklyCodHistory").innerHTML=`<div class="settlement-grid"><div class="ratebox"><b>COD Pending</b><div class="money">${money(pending)}</div></div><div class="ratebox"><b>COD Paid</b><div class="money">${money(paid)}</div></div><div class="ratebox"><b>Weekly Settlements</b><div class="money">${rows.length}</div></div><div class="ratebox"><b>Pending Weeks</b><div class="money">${rows.filter(x=>x.status!=="Paid").length}</div></div></div>${rows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Client</th><th>Week</th><th>Parcels</th><th>COD Amount</th><th>Settlement Bank</th><th>Status</th><th>Action</th></tr></thead><tbody>${table}</tbody></table></div>`:'<div class="notice">No weekly COD settlements yet.</div>'}`;
+}
+async function createWeeklyCod(){if(currentProfile?.role!=="admin")return;const cid=Number($("weeklyCodClient")?.value),parts=($("weeklyCodWeek")?.value||'').split('|');if(!cid||parts.length!==2)return msg("weeklyCodMsg","Select client and Monday–Saturday week.","error");const client=(adminClientData||[]).find(c=>Number(c.id)===cid);if(!client)return msg("weeklyCodMsg","Client record not found.","error");if(!client.bank_holder_name||!client.account_number||!client.ifsc){showSelectedWeeklyCodClientBank();return msg("weeklyCodMsg","Client bank details are incomplete. Ask the client to save Account Holder, Account Number and IFSC in My Profile before creating the weekly COD settlement.","error");}const{data,error}=await supabaseClient.rpc("create_weekly_cod_settlement",{p_client_id:cid,p_period_start:parts[0],p_period_end:parts[1]});if(error)return msg("weeklyCodMsg",error.message,"error");msg("weeklyCodMsg",`Weekly COD settlement created successfully (ID ${data}). Payout account verified: ${client.bank_holder_name} / ${client.ifsc}.`,"ok");await loadAdminWeeklyCod();}
 async function markWeeklyCodPaid(id){if(currentProfile?.role!=="admin")return;const ref=prompt("Weekly COD payment UTR / transaction reference:","");if(ref===null)return;const{error}=await supabaseClient.rpc("mark_weekly_cod_paid",{p_weekly_settlement_id:Number(id),p_payment_reference:ref.trim()});if(error)return alert(error.message);await loadAdminWeeklyCod();}
 async function generateClientInvoice(){
  if(currentProfile?.role!=="admin")return;
