@@ -2048,25 +2048,34 @@ if(error){
      "error"
     );
 }
+      // Send Telegram after the booking is safely inserted.
+      // Telegram failure must not cancel an already-saved booking.
+      const telegramResult = await sendTelegramBookingNotification(
+          booking,
+          currentClient?.Client_name || currentProfile?.full_name || "Client"
+      );
 
-     // Telegram notification is handled by the Supabase AFTER INSERT trigger.
-     // No client-side duplicate notification is sent here.
+      orderIdInput.value = orderId;
+      msg(
+          "bookingMsg",
+          telegramResult.ok
+              ? `Booking successful! Order ID: ${orderId}`
+              : `Booking successful! Order ID: ${orderId}. Telegram notification could not be delivered.`,
+          telegramResult.ok ? "ok" : "notice"
+      );
 
-    orderIdInput.value =
-orderId;
-    msg(
-        "bookingMsg",
-        `Booking successful! Order ID: ${orderId}`,
-        "ok"
-    );
-    const bookingSuccess=$("bookingMsg")?.querySelector(".notice");
-    if(bookingSuccess) bookingSuccess.classList.add("booking-success");
-     if(!telegramResult.ok){
-         console.warn("Shipment booked successfully, but Telegram notification could not be delivered.", telegramResult.error || "");
-     }
-    // The database trigger creates the admin task.
-    // Refreshing here is harmless and helps same-session admins.
-    await loadOrders();
+      const bookingSuccess=$("bookingMsg")?.querySelector(".notice");
+      if(bookingSuccess) bookingSuccess.classList.add("booking-success");
+
+      if(!telegramResult.ok){
+          console.warn(
+              "Shipment booked, but Telegram notification failed:",
+              telegramResult.error || ""
+          );
+      }
+
+      // Admin reads the same bookings table, so the booking is available there.
+      await loadOrders();
     setTimeout(
         clearBooking,
         1500
@@ -2742,10 +2751,52 @@ async function downloadLabel(id){
     if(!o?.label_file_path){
         return alert("Shipping label is not available yet.");
     }
+
     try{
-        const { data, error } = await supabaseClient.storage.from("shipping-labels").download(o.label_file_path);
-        if(error) throw error;
-        if(!data) throw new Error("Shipping label file not found.");
+        let path = String(o.label_file_path).trim();
+
+        // Normalize older stored values to a bucket-relative object path.
+        path = path.replace(
+            /^https?:\\/\\/[^/]+\\/storage\\/v1\\/object\\/(?:sign|public)\\/shipping-labels\\//i,
+            ""
+        );
+        path = path.replace(/^shipping-labels\\//i, "");
+        path = path.replace(/^\\/+/, "");
+
+        if(!path){
+            throw new Error("Shipping label file path is empty.");
+        }
+
+        const bucket = supabaseClient.storage.from("shipping-labels");
+
+        // First try the normal authenticated download.
+        const { data, error } = await bucket.download(path);
+
+        if(error || !data){
+            console.warn(
+                "Direct label download failed, trying signed URL:",
+                error?.message || "No file data"
+            );
+
+            // Fallback for private buckets.
+            const { data:signedData, error:signedError } =
+                await bucket.createSignedUrl(path, 300);
+
+            if(signedError || !signedData?.signedUrl){
+                throw signedError || error || new Error("Shipping label file not found.");
+            }
+
+            const a = document.createElement("a");
+            a.href = signedData.signedUrl;
+            a.target = "_blank";
+            a.rel = "noopener";
+            a.download = `${o.order_id || "shipping-label"}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            return;
+        }
+
         const blobUrl = URL.createObjectURL(data);
         const a = document.createElement("a");
         a.href = blobUrl;
@@ -2754,6 +2805,7 @@ async function downloadLabel(id){
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+
     }catch(e){
         console.error("downloadLabel error:",e);
         alert("Shipping label download failed: " + (e.message || String(e)));
