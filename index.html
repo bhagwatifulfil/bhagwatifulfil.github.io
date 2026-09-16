@@ -2757,11 +2757,11 @@ async function downloadLabel(id){
 
         // Normalize older stored values to a bucket-relative object path.
         path = path.replace(
-            /^https?:\\/\\/[^/]+\\/storage\\/v1\\/object\\/(?:sign|public)\\/shipping-labels\\//i,
+            /^https?:\/\/[^/]+\/storage\/v1\/object\/(?:sign|public)\/shipping-labels\//i,
             ""
         );
         path = path.replace(/^shipping-labels\\//i, "");
-        path = path.replace(/^\\/+/, "");
+        path = path.replace(/^\/+/, "");
 
         if(!path){
             throw new Error("Shipping label file path is empty.");
