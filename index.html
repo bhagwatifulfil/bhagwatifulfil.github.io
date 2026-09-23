@@ -615,7 +615,8 @@ body.auth-locked #adminArea * {
 <label>Pickup Address</label>
 <textarea id="pickupAddress"></textarea>
 <label>Pickup Pincode</label>
-<input id="pickupPincode" maxlength="6">
+<input id="pickupPincode" maxlength="6" oninput="handlePincodeInput('pickup')">
+<div id="pickupPincodeInfo" class="small" style="margin-top:5px"></div>
 <h3>Customer / Delivery Details</h3>
 <div class="grid">
  <div>
@@ -633,8 +634,9 @@ body.auth-locked #adminArea * {
 <input
  id="deliveryPincode"
  maxlength="6"
- oninput="calculateRate()"
+ oninput="handlePincodeInput('delivery')"
 >
+<div id="deliveryPincodeInfo" class="small" style="margin-top:5px"></div>
 <label>Parcel / Order Value ₹</label>
 <input
  id="parcelValue"
@@ -1681,112 +1683,185 @@ function requestBankEdit(){msg("profileMsg","Bank details are locked. Ask Admin 
 function paymentChanged(){
     calculateRate();
 }
+const pincodeInfoCache = new Map();
+let pickupPincodeInfo = null;
+let deliveryPincodeInfo = null;
+let pincodeLookupTimer = null;
+
+function normalizePincodeInfo(raw, pin){
+    const po = Array.isArray(raw?.PostOffice) ? raw.PostOffice[0] : null;
+    if(!po) return null;
+    return {
+        pincode: String(pin),
+        city: String(po.District || po.Name || "").trim(),
+        district: String(po.District || "").trim(),
+        state: String(po.State || "").trim(),
+        region: String(po.Region || "").trim()
+    };
+}
+
+async function lookupPincode(pin){
+    if(!/^\d{6}$/.test(pin)) return null;
+    if(pincodeInfoCache.has(pin)) return pincodeInfoCache.get(pin);
+    try{
+        const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+        const json = await res.json();
+        const info = normalizePincodeInfo(json?.[0], pin);
+        if(info) pincodeInfoCache.set(pin, info);
+        return info;
+    }catch(e){
+        return null;
+    }
+}
+
+function showPincodeInfo(type, info, errorText=""){
+    const el = $(type === "pickup" ? "pickupPincodeInfo" : "deliveryPincodeInfo");
+    if(!el) return;
+    if(info){
+        el.textContent = `${info.city || info.district} • ${info.state}`;
+        el.style.color = "#475569";
+    }else if(errorText){
+        el.textContent = errorText;
+        el.style.color = "#b42318";
+    }else{
+        el.textContent = "";
+    }
+}
+
+async function handlePincodeInput(type){
+    const input = type === "pickup" ? $("pickupPincode") : $("deliveryPincode");
+    const pin = input.value.trim();
+    if(type === "pickup") pickupPincodeInfo = null;
+    else deliveryPincodeInfo = null;
+    showPincodeInfo(type, null, "");
+    clearTimeout(pincodeLookupTimer);
+    if(!/^\d{6}$/.test(pin)){
+        calculateRate();
+        return;
+    }
+    showPincodeInfo(type, null, "Checking PIN code...");
+    pincodeLookupTimer = setTimeout(async()=>{
+        const info = await lookupPincode(pin);
+        if(type === "pickup") pickupPincodeInfo = info;
+        else deliveryPincodeInfo = info;
+        if(info){
+            showPincodeInfo(type, info);
+        }else{
+            showPincodeInfo(type, null, "PIN code not found. Please check the 6-digit PIN.");
+        }
+        calculateRate();
+    }, 180);
+}
+
+function getSpecialZone(pin){
+    if(!/^\d{6}$/.test(pin)) return false;
+    return pin.startsWith("18") || pin.startsWith("19") ||
+           pin.startsWith("78") || pin.startsWith("79") ||
+           pin.startsWith("744");
+}
+
+/*
+  CARD-ALIGNED PIN/CITY/STATE ZONING
+  Part 1 = Same City
+  Part 2 = Same State, Different City
+  Part 3 = Different State / Metro + Rest India
+  Part 4 = North-East + J&K/Ladakh + Andaman & Nicobar
+
+  The pincode service supplies city/district/state. Supabase connection
+  and existing booking tables are not changed by this rate logic.
+*/
+function getBhagwatiZoneFromPincode(pickup, delivery){
+    if(!pickup || !delivery) return null;
+
+    if(getSpecialZone(delivery.pincode)) return "D";
+
+    const sameState = pickup.state && delivery.state &&
+        pickup.state.toLowerCase() === delivery.state.toLowerCase();
+    const sameCity = pickup.city && delivery.city &&
+        pickup.city.toLowerCase() === delivery.city.toLowerCase();
+
+    if(sameCity) return "A";
+    if(sameState) return "B";
+    return "C";
+}
+
 function calculateRate(){
-    const l =
-    Number(lengthInput.value)||0;
-    const w =
-    Number(widthInput.value)||0;
-    const h =
-    Number(heightInput.value)||0;
-    const ag =
-    Number(actualWeightInput.value)||0;
-    const pin =
-    deliveryPincode.value.trim();
-    const vol =
-    l*w*h/5000;
-    const charge =
-    Math.max(
-        ag/1000,
-        vol
-    );
-    let zn =
-    "Pan India";
-    if(
-        pin.length===6 &&
-        ["40","41","42","43","44"]
-        .includes(pin.substring(0,2))
-    ){
-        zn="Maharashtra";
+    const l = Number(lengthInput.value)||0;
+    const w = Number(widthInput.value)||0;
+    const h = Number(heightInput.value)||0;
+    const ag = Number(actualWeightInput.value)||0;
+    const vol = l*w*h/5000;
+    const charge = Math.max(ag/1000, vol);
+
+    const pp = $("pickupPincode").value.trim();
+    const dp = deliveryPincode.value.trim();
+    const zoneCode = getBhagwatiZoneFromPincode(pickupPincodeInfo, deliveryPincodeInfo);
+
+    if(!zoneCode){
+        $("volumetricWeight").textContent = vol.toFixed(2);
+        $("chargeableWeight").textContent = charge.toFixed(2);
+        $("zone").textContent = (/^\d{6}$/.test(pp) && /^\d{6}$/.test(dp))
+            ? "Checking PIN / City / State"
+            : "Enter pickup & delivery PIN";
+        $("shippingCharge").textContent = "0";
+        $("codCharge").textContent = paymentType.value==="COD" ? 25 : 0;
+        $("totalCharge").textContent = paymentType.value==="COD" ? 25 : 0;
+        $("rtoCharge").textContent = "0";
+        return;
     }
-    let ship=0;
-    if(charge<=.25){
-        ship =
-        zn==="Maharashtra"
-        ?40
-        :50;
+
+    const RATE_CARD = {
+        A: [40,45,55,65,75,85,110,125,145],
+        B: [45,50,65,75,90,100,120,140,160],
+        C: [50,55,75,90,105,120,145,160,180],
+        D: [55,65,85,100,120,140,160,190,190]
+    };
+
+    const WEIGHT_SLABS = [0.25,0.50,0.75,1.00,1.50,2.00,3.00,4.00,5.00];
+    let slabIndex = WEIGHT_SLABS.findIndex(x => charge <= x);
+    let ship = 0;
+    if(slabIndex >= 0){
+        ship = RATE_CARD[zoneCode][slabIndex];
+    }else{
+        const extraHalfKg = Math.ceil((charge-5)/0.5);
+        const extraRate = zoneCode === "A" ? 20 : zoneCode === "B" ? 20 : 25;
+        ship = RATE_CARD[zoneCode][8] + (extraHalfKg * extraRate);
     }
-else if(charge<=.5){
-    ship =
-    zn==="Maharashtra"
-    ?45
-    :60;
+
+    const zoneNames = {
+        A: "Part 1 – Same City",
+        B: "Part 2 – Same State",
+        C: "Part 3 – Other State / Metro + Rest India",
+        D: "Part 4 – NE / J&K / Andaman"
+    };
+    const cod = paymentType.value === "COD" ? 25 : 0;
+
+    $("volumetricWeight").textContent = vol.toFixed(2);
+    $("chargeableWeight").textContent = charge.toFixed(2);
+    $("zone").textContent = `${zoneCode} – ${zoneNames[zoneCode].replace(/^Part [1-4] – /,"")}`;
+    $("shippingCharge").textContent = ship;
+    $("codCharge").textContent = cod;
+    $("totalCharge").textContent = ship + cod;
+    $("rtoCharge").textContent = ship;
 }
-else if(charge<=.75){
-    ship =
-    zn==="Maharashtra"
-    ?55
-    :75;
-}
-else if(charge<=1){
-    ship =
-    zn==="Maharashtra"
-    ?70
-    :90;
-}
-else if(charge<=1.5){
-    ship =
-    zn==="Maharashtra"
-    ?95
-    :115;
-}
-else if(charge<=2){
-    ship =
-    zn==="Maharashtra"
-    ?105
-    :125;
-}
-else{
-    ship =
-    (
-        zn==="Maharashtra"
-        ?105
-        :125
-        )+
-        Math.ceil(
-            (charge-2)/.5
-        )*
-        (
-            zn==="Maharashtra"
-            ?20
-            :25
-        );
+
+async function ensurePincodeDetails(){
+    const pp = $("pickupPincode").value.trim();
+    const dp = $("deliveryPincode").value.trim();
+    if(!/^\d{6}$/.test(pp) || !/^\d{6}$/.test(dp)) return false;
+
+    if(!pickupPincodeInfo || pickupPincodeInfo.pincode !== pp){
+        pickupPincodeInfo = await lookupPincode(pp);
+        if(pickupPincodeInfo) showPincodeInfo("pickup", pickupPincodeInfo);
     }
-    const cod =
-    paymentType.value==="COD"
-    ?25
-    :0;
-    $("volumetricWeight")
-    .textContent =
-    vol.toFixed(2);
-    $("chargeableWeight")
-    .textContent =
-    charge.toFixed(2);
-    $("zone")
-    .textContent =
-    zn;
-    $("shippingCharge")
-    .textContent =
-    ship;
-    $("codCharge")
-    .textContent =
-    cod;
-    $("totalCharge")
-    .textContent =
-    ship+cod;
-    $("rtoCharge")
-    .textContent =
-    ship;
+    if(!deliveryPincodeInfo || deliveryPincodeInfo.pincode !== dp){
+        deliveryPincodeInfo = await lookupPincode(dp);
+        if(deliveryPincodeInfo) showPincodeInfo("delivery", deliveryPincodeInfo);
+    }
+    calculateRate();
+    return !!(pickupPincodeInfo && deliveryPincodeInfo);
 }
+
 /* =========================================================
  DAILY ORDER SEQUENCE
 ========================================================= */
@@ -1928,6 +2003,14 @@ if(!pv){
     return msg(
       "bookingMsg",
       "Enter parcel/order value.",
+      "error"
+    );
+}
+const pinReady = await ensurePincodeDetails();
+if(!pinReady){
+    return msg(
+      "bookingMsg",
+      "Pickup and delivery PIN codes could not be verified. Please check both 6-digit PIN codes.",
       "error"
     );
 }
