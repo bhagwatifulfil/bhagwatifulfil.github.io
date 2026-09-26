@@ -515,7 +515,7 @@ body.auth-locked #adminArea * {
   <button type="button" onclick="showClientPage('booking')">New Booking</button>
   <button type="button" onclick="showClientPage('shipments')">My Shipments</button>
   <button type="button" onclick="showClientPage('reports')">Reports & Statistics</button>
-  <button type="button" onclick="showClientPage('cod')">Weekly COD Settlement</button>
+  <button type="button" onclick="showClientPage('wallet')">Wallet & COD Balance</button>
   <button type="button" onclick="showClientPage('invoices')">Invoices & Payments</button>
   <button type="button" onclick="showClientPage('support')">Support</button>
   <button type="button" onclick="showClientPage('profile')">My Profile</button>
@@ -531,7 +531,7 @@ body.auth-locked #adminArea * {
   <div class="quick-grid">
    <button class="quick-card" onclick="showClientPage('booking')"><b>＋ New Booking</b><span>Create shipment</span></button>
    <button class="quick-card" onclick="showClientPage('shipments')"><b>📦 My Shipments</b><span>Track orders</span></button>
-   <button class="quick-card" onclick="showClientPage('cod')"><b>💰 Weekly COD</b><span>Settlement status</span></button>
+   <button class="quick-card" onclick="showClientPage('wallet')"><b>💰 Wallet & COD</b><span>Balance & outstanding</span></button>
    <button class="quick-card" onclick="showClientPage('invoices')"><b>🧾 Invoices</b><span>View & pay</span></button>
   </div>
   <div id="clientDashboardSummary" class="dashboard-mini-grid"></div>
@@ -787,6 +787,14 @@ body.auth-locked #adminArea * {
   <div id="ordersList">Loading...</div>
  </div>
 <!-- WEEKLY COD SETTLEMENT -->
+<div id="clientWalletBox" class="card hidden app-page">
+  <div class="topbar"><div><h2>Wallet & COD Balance</h2><div class="small">Wallet is prepaid balance. COD is money collected on your behalf. Outstanding shows unpaid charges.</div></div><button class="secondary" type="button" onclick="loadClientWallet()">REFRESH</button></div>
+  <div id="clientWalletMsg"></div>
+  <div id="clientWalletSummary" class="settlement-grid"></div>
+  <div class="notice"><b>Add Money:</b> Wallet recharge gateway will be connected separately. Do not share OTP, UPI PIN or password here.</div>
+  <h3>Wallet Transactions</h3><div id="clientWalletTransactions">Loading...</div>
+  <h3>Outstanding Charges</h3><div id="clientOutstandingTransactions">Loading...</div>
+</div>
 <div id="clientCodBox" class="card hidden">
  <div class="topbar"><div><h2>Weekly COD Settlement</h2><div class="small">COD collected Monday–Saturday is settled as one weekly payment.</div></div></div>
  <div id="clientCodSummary" class="settlement-grid"></div>
@@ -824,7 +832,7 @@ body.auth-locked #adminArea * {
   <div class="header-actions"><button class="secondary mini-btn" type="button" onclick="refreshAdminDashboard()">↻</button><button class="menu-btn" type="button" aria-label="Open menu" onclick="toggleAppMenu('adminMenu')">⋮</button></div>
  </div>
  <div id="adminMenu" class="app-menu hidden">
-  <button type="button" onclick="showAdminPage('dashboard')">Dashboard</button><button type="button" onclick="showAdminPage('clients')">Clients</button><button type="button" onclick="showAdminPage('shipments')">All Shipments</button><button type="button" onclick="showAdminPage('invoices')">Client Invoices</button><button type="button" onclick="showAdminPage('cod')">Weekly COD Settlement</button><button type="button" onclick="showAdminPage('payments')">Payment Submissions</button><button type="button" onclick="showAdminPage('bank')">Business Payment Details</button><button type="button" onclick="showAdminPage('support')">Support</button><button type="button" onclick="showAdminPage('settings')">Settings</button><button type="button" class="menu-danger" onclick="logout()">Logout</button>
+  <button type="button" onclick="showAdminPage('dashboard')">Dashboard</button><button type="button" onclick="showAdminPage('clients')">Clients</button><button type="button" onclick="showAdminPage('shipments')">All Shipments</button><button type="button" onclick="showAdminPage('invoices')">Client Invoices</button><button type="button" onclick="showAdminPage('cod')">Weekly COD Settlement</button><button type="button" onclick="showAdminPage('payments')">Payment Submissions</button><button type="button" onclick="showAdminPage('wallet')">Client Wallets</button><button type="button" onclick="showAdminPage('bank')">Business Payment Details</button><button type="button" onclick="showAdminPage('support')">Support</button><button type="button" onclick="showAdminPage('settings')">Settings</button><button type="button" class="menu-danger" onclick="logout()">Logout</button>
  </div>
  <div id="adminMsg"></div>
  <div id="adminDashboardHome" class="card admin-page active">
@@ -834,7 +842,7 @@ body.auth-locked #adminArea * {
   <div class="dashboard-section-title">Client Performance</div>
   <div id="adminClientPerformance" class="table-wrap"></div>
   <div class="dashboard-section-title">Quick Access</div>
-  <div class="quick-grid"><button class="quick-card" onclick="showAdminPage('shipments')"><b>📦 All Shipments</b><span>Bookings & status</span></button><button class="quick-card" onclick="showAdminPage('invoices')"><b>🧾 Invoices</b><span>Generate & verify</span></button><button class="quick-card" onclick="showAdminPage('cod')"><b>💰 Weekly COD</b><span>Create & pay</span></button><button class="quick-card" onclick="showAdminPage('payments')"><b>💳 Payments</b><span>Verify submissions</span></button></div>
+  <div class="quick-grid"><button class="quick-card" onclick="showAdminPage('shipments')"><b>📦 All Shipments</b><span>Bookings & status</span></button><button class="quick-card" onclick="showAdminPage('invoices')"><b>🧾 Invoices</b><span>Generate & verify</span></button><button class="quick-card" onclick="showAdminPage('cod')"><b>💰 Weekly COD</b><span>Create & pay</span></button><button class="quick-card" onclick="showAdminPage('payments')"><b>💳 Payments</b><span>Verify submissions</span></button><button class="quick-card" onclick="showAdminPage('wallet')"><b>💰 Wallets</b><span>Client balances</span></button></div>
  </div>
 <!-- DEDICATED TODAY BOOKINGS DESK -->
  <div class="card admin-page today-bookings-desk active" id="adminTodayBookingsCard">
@@ -972,6 +980,11 @@ body.auth-locked #adminArea * {
 </div>
 
 <!-- WEEKLY COD SETTLEMENT ADMIN -->
+<div class="card admin-page" id="adminWalletCard">
+ <div class="topbar"><div><h2>Client Wallets</h2><div class="small">Admin view — Wallet Balance, COD Payable and Outstanding.</div></div><button class="secondary" type="button" onclick="loadAdminWallets()">REFRESH</button></div>
+ <div id="adminWalletMsg"></div>
+ <div id="adminWalletHistory">Loading...</div>
+</div>
 <div class="card admin-page" id="adminCodCard">
  <div class="topbar"><div><h2>Weekly COD Settlement</h2><div class="small">One consolidated Monday–Saturday COD payout per client.</div></div><button class="secondary" type="button" onclick="loadAdminWeeklyCod()">REFRESH</button></div>
  <div class="grid"><div><label>Client</label><select id="weeklyCodClient" onchange="showSelectedWeeklyCodClientBank()"><option value="">Select Client</option></select></div><div><label>Week</label><select id="weeklyCodWeek"></select></div></div>
@@ -2241,6 +2254,7 @@ async function loadOrders(){
     }
     clientOrders =
     data || [];
+    loadClientWallet();
     populateMonth(
         "clientMonth",
         clientOrders
@@ -3872,8 +3886,9 @@ async function uploadLabelFile(
        "Booking not found."
      );
  }
+ /* One private path per client + booking. Same booking can be replaced with a revised label. */
  const path =
- `${o.client_id}/${o.order_id}.pdf`;
+ `${o.client_id}/${o.id}_${o.order_id}.pdf`;
  const {
      error
  }=
@@ -4221,14 +4236,14 @@ function ensurePageBackButton(container, backHandler, label){
 function showClientPage(page){
     hideMenus();
     document.querySelectorAll('#clientArea .app-page').forEach(x=>x.classList.remove('active'));
-    ['clientProfileBox','bookingBox','ordersBox','clientCodBox','clientInvoiceBox','clientSupportBox'].forEach(id=>$(id)?.classList.add('hidden'));
+    ['clientProfileBox','bookingBox','ordersBox','clientWalletBox','clientCodBox','clientInvoiceBox','clientSupportBox'].forEach(id=>$(id)?.classList.add('hidden'));
     const map={
       dashboard:'clientDashboardHome',
       profile:'clientProfileBox',
       booking:'bookingBox',
       shipments:'ordersBox',
       reports:'ordersBox',
-      cod:'clientCodBox',
+      wallet:'clientWalletBox',cod:'clientCodBox',
       invoices:'clientInvoiceBox',
       support:'clientSupportBox'
     };
@@ -4240,7 +4255,7 @@ function showClientPage(page){
     if(page!=='dashboard'){
       const labels={
         profile:'My Profile', booking:'New Booking', shipments:'My Shipments',
-        reports:'Reports & Statistics', cod:'Weekly COD Settlement',
+        reports:'Reports & Statistics', wallet:'Wallet & COD Balance', cod:'Weekly COD Settlement',
         invoices:'Invoices & Payments', support:'Support'
       };
       ensurePageBackButton(target,()=>showClientPage('dashboard'),labels[page]||'Dashboard');
@@ -4254,7 +4269,7 @@ function showAdminPage(page){
     document.querySelectorAll('#adminArea .admin-page').forEach(x=>x.classList.remove('active'));
     const map={
       dashboard:'adminDashboardHome',clients:'adminClientsCard',shipments:'adminShipmentsCard',
-      invoices:'adminInvoicesCard',cod:'adminCodCard',bank:'adminBankCard',support:'adminSupportBox'
+      invoices:'adminInvoicesCard',cod:'adminCodCard',wallet:'adminWalletCard',bank:'adminBankCard',support:'adminSupportBox'
     };
     const todayDesk=$('adminTodayBookingsCard');
     if(todayDesk){
@@ -4268,6 +4283,7 @@ function showAdminPage(page){
             ensurePageBackButton(target,()=>showAdminPage('dashboard'),page==='shipments'?'All Shipments':"Admin Dashboard");
         }
     }
+    if(page==='wallet'){loadAdminWallets();}
     if(page==='payments'){
         $('adminInvoicesCard')?.classList.add('active');
         setTimeout(()=>document.getElementById('adminInvoiceHistory')?.scrollIntoView({behavior:'smooth',block:'start'}),50);
@@ -4418,6 +4434,44 @@ function fillWeeklyPeriodSelect(){const el=$("weeklyCodWeek");if(!el)return;cons
 function fillWeeklyCodClients(){const el=$("weeklyCodClient");if(!el)return;const old=el.value;el.innerHTML='<option value="">Select Client</option>'+adminClientData.map(c=>`<option value="${escAttr(c.id)}">${esc(c.client_number||("Client "+c.id))} - ${esc(c.Client_name||"")}</option>`).join("");if(old)el.value=old;showSelectedWeeklyCodClientBank();}
 function showSelectedWeeklyCodClientBank(){const el=$("weeklyCodClient"),box=$("weeklyCodBankDetails");if(!box)return;const cid=Number(el?.value||0);if(!cid){box.className="notice";box.innerHTML="Select a client to view the COD settlement bank details.";return;}const c=(adminClientData||[]).find(x=>Number(x.id)===cid);if(!c){box.className="notice error";box.textContent="Client details not found.";return;}const holder=c.bank_holder_name||"",account=c.account_number||"",ifsc=c.ifsc||"",upi=c.upi_id||"";if(!holder||!account||!ifsc){box.className="notice error";box.innerHTML=`<b>Bank details missing.</b><br>Client must open <b>My Profile → COD Settlement Bank Details</b> and save Account Holder, Account Number and IFSC before this weekly COD can be created.`;return;}box.className="notice";box.innerHTML=`<b>COD payout account</b><br>Account Holder: ${esc(holder)}<br>Account Number: ${esc(account)}<br>IFSC: ${esc(ifsc)}${upi?`<br>UPI ID: ${esc(upi)}`:""}`;}
 async function syncCodSettlementForBooking(id,finalStatus){if(finalStatus!=="Delivered")return;const{data:o,error}=await supabaseClient.from("bookings").select("id,client_id,order_id,payment_type,parcel_value,delivered_at,status").eq("id",id).single();if(error||!o||o.payment_type!=="COD"||o.status!=="Delivered")return;const deliveredAt=o.delivered_at||new Date().toISOString(),payload={client_id:o.client_id,booking_id:o.id,order_id:o.order_id,cod_amount:Number(o.parcel_value||0),delivered_at:deliveredAt,status:"Pending"};const{data:existing}=await supabaseClient.from("cod_settlements").select("id,status").eq("booking_id",o.id).maybeSingle();if(existing){if(existing.status!=="Paid")await supabaseClient.from("cod_settlements").update(payload).eq("id",existing.id);}else await supabaseClient.from("cod_settlements").insert(payload);}
+async function loadClientWallet(){
+    if(currentProfile?.role!=="client" || !currentProfile?.client_id) return;
+    const cid=Number(currentProfile.client_id);
+    const box=$("clientWalletBox");
+    if(box) box.classList.remove("hidden");
+    const [{data:w,error:we},{data:t,error:te},{data:o,error:oe}]=await Promise.all([
+        supabaseClient.from("client_wallets").select("*").eq("client_id",cid).maybeSingle(),
+        supabaseClient.from("wallet_transactions").select("*").eq("client_id",cid).order("created_at",{ascending:false}).limit(100),
+        supabaseClient.from("client_outstanding_transactions").select("*").eq("client_id",cid).order("created_at",{ascending:false}).limit(100)
+    ]);
+    if(we){$("clientWalletMsg").innerHTML=`<div class="notice error">${esc(we.message)}</div>`;return;}
+    const wallet=w||{wallet_balance:0,cod_payable:0,outstanding:0,low_balance_limit:100};
+    $("clientWalletSummary").innerHTML=`
+      <div class="ratebox"><div>Wallet Balance</div><div class="money">${money(wallet.wallet_balance)}</div><div class="small">Low balance limit: ${money(wallet.low_balance_limit)}</div></div>
+      <div class="ratebox"><div>COD Payable</div><div class="money">${money(wallet.cod_payable)}</div><div class="small">COD collected for you</div></div>
+      <div class="ratebox"><div>Outstanding</div><div class="money">${money(wallet.outstanding)}</div><div class="small">Charges due to Bhagwati Fulfil</div></div>
+      <div class="ratebox"><div>Account Status</div><div class="money">${Number(wallet.wallet_balance||0)<=Number(wallet.low_balance_limit||100)?"LOW":"OK"}</div><div class="small">Booking availability depends on wallet rules</div></div>`;
+    if(te){$("clientWalletTransactions").innerHTML=`<div class="notice error">${esc(te.message)}</div>`;}else{
+      const rows=t||[];
+      $("clientWalletTransactions").innerHTML=rows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance After</th><th>Description</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(new Date(x.created_at).toLocaleString("en-IN"))}</td><td>${esc(x.transaction_type||"")}</td><td>${money(x.amount)}</td><td>${money(x.balance_after)}</td><td>${esc(x.description||"")}</td></tr>`).join("")}</tbody></table></div>`:'<div class="notice">No wallet transactions yet.</div>';
+    }
+    if(oe){$("clientOutstandingTransactions").innerHTML=`<div class="notice error">${esc(oe.message)}</div>`;}else{
+      const rows=o||[];
+      $("clientOutstandingTransactions").innerHTML=rows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Charge</th><th>Amount</th><th>Paid</th><th>Status</th><th>Description</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(new Date(x.created_at).toLocaleString("en-IN"))}</td><td>${esc(x.charge_type||"")}</td><td>${money(x.amount)}</td><td>${money(x.paid_amount)}</td><td>${esc(x.status||"Pending")}</td><td>${esc(x.description||"")}</td></tr>`).join("")}</tbody></table></div>`:'<div class="notice">No outstanding charges.</div>';
+    }
+}
+
+async function loadAdminWallets(){
+    if(currentProfile?.role!=="admin") return;
+    const {data,error}=await supabaseClient.from("client_wallets").select("*").order("client_id",{ascending:true});
+    if(error){$("adminWalletHistory").innerHTML=`<div class="notice error">${esc(error.message)}</div>`;return;}
+    const rows=data||[];
+    const totalWallet=rows.reduce((a,x)=>a+Number(x.wallet_balance||0),0);
+    const totalCod=rows.reduce((a,x)=>a+Number(x.cod_payable||0),0);
+    const totalOutstanding=rows.reduce((a,x)=>a+Number(x.outstanding||0),0);
+    $("adminWalletHistory").innerHTML=`<div class="settlement-grid"><div class="ratebox"><b>Total Wallet</b><div class="money">${money(totalWallet)}</div></div><div class="ratebox"><b>Total COD Payable</b><div class="money">${money(totalCod)}</div></div><div class="ratebox"><b>Total Outstanding</b><div class="money">${money(totalOutstanding)}</div></div><div class="ratebox"><b>Clients</b><div class="money">${rows.length}</div></div></div>${rows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Client</th><th>Wallet</th><th>COD Payable</th><th>Outstanding</th><th>Low Limit</th><th>Updated</th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${esc(clientName(x.client_id))}</b><br><span class="small">${esc(clientNo(x.client_id))}</span></td><td>${money(x.wallet_balance)}</td><td>${money(x.cod_payable)}</td><td>${money(x.outstanding)}</td><td>${money(x.low_balance_limit)}</td><td>${esc(new Date(x.updated_at||x.created_at).toLocaleString("en-IN"))}</td></tr>`).join("")}</tbody></table></div>`:'<div class="notice">No wallet records yet.</div>'}`;
+}
+
 async function loadClientPayments(){if(!currentProfile?.client_id)return;$("clientCodBox")?.classList.remove("hidden");$("clientInvoiceBox")?.classList.remove("hidden");const cid=Number(currentProfile.client_id);const[cs,ins,ps,ws]=await Promise.all([supabaseClient.from("cod_settlements").select("*").eq("client_id",cid).order("created_at",{ascending:false}),supabaseClient.from("client_invoices").select("*").eq("client_id",cid).eq("approval_status","Sent").order("created_at",{ascending:false}),supabaseClient.from("client_payment_submissions").select("*").eq("client_id",cid).order("created_at",{ascending:false}),supabaseClient.from("weekly_cod_settlements").select("*").eq("client_id",cid).order("period_start",{ascending:false})]);if(cs.error)$("clientCodHistory").innerHTML=`<div class="notice error">${esc(cs.error.message)}</div>`;else{clientCodSettlements=cs.data||[];renderClientCodHistory();}if(ws.error)$("clientWeeklyCodHistory").innerHTML=`<div class="notice error">${esc(ws.error.message)}</div>`;else{clientWeeklyCodSettlements=ws.data||[];renderClientWeeklyCodHistory();}if(ins.error)$("clientInvoiceHistory").innerHTML=`<div class="notice error">${esc(ins.error.message)}</div>`;else{clientInvoices=(ins.data||[]).filter(x=>(x.approval_status||"Sent")==="Sent");renderClientInvoiceHistory();populateClientPayInvoices();}renderClientSettlementBankDetails();await loadBusinessPaymentSettings();}
 function renderClientSettlementBankDetails(){const box=$("clientSettlementBankDetails");if(!box)return;const c=currentClient||{};const holder=c.bank_holder_name||"",account=c.account_number||"",ifsc=c.ifsc||"",upi=c.upi_id||"";if(!holder||!account||!ifsc){box.innerHTML=`<div class="notice error">Bank details are not saved yet. Please open <b>My Profile</b> and save Account Holder Name, Account Number and IFSC. Weekly COD payout cannot be completed until these details are available.</div>`;return;}box.innerHTML=`<b>Account Holder:</b> ${esc(holder)} &nbsp; <b>Account Number:</b> ${esc(account)} &nbsp; <b>IFSC:</b> ${esc(ifsc)}${upi?` &nbsp; <b>UPI:</b> ${esc(upi)}`:""}`;}
 
