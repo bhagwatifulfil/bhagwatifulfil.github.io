@@ -459,13 +459,13 @@ body.auth-locked #adminArea * {
  <label>Password</label>
  <input id="loginPassword" type="password" placeholder="Enter password" autocomplete="new-password">
  <button type="button" class="primary" onclick="login()">LOGIN</button>
- <button type="button" class="secondary" onclick="loginWithGoogle()">CONTINUE WITH GOOGLE</button>
  <button class="secondary" onclick="showSignup()">
   CREATE NEW CLIENT ACCOUNT
  </button>
  <button class="secondary" onclick="sendReset()">
   FORGOT PASSWORD?
  </button>
+ <div class="small" style="margin-top:6px">If the signup email is not a real inbox, contact BHAGWATI FULFIL support for a password reset.</div>
 </section>
 <!-- SIGNUP -->
 <section id="signupSection" class="card hidden">
@@ -1253,23 +1253,6 @@ async function ensureClientAccount(name="", mobile=""){
     return data;
 }
 
-async function loginWithGoogle(){
-    const btn=document.querySelector('button[onclick="loginWithGoogle()"]');
-    if(btn) btn.disabled=true;
-    try{
-        msg("loginMsg","Opening Google sign-in...");
-        const {error}=await supabaseClient.auth.signInWithOAuth({
-            provider:"google",
-            options:{redirectTo:window.location.origin+window.location.pathname}
-        });
-        if(error) msg("loginMsg",error.message,"error");
-    }catch(e){
-        msg("loginMsg",e?.message||"Google login failed. Please try again.","error");
-    }finally{
-        if(btn) btn.disabled=false;
-    }
-}
-
 /* =========================================================
     SIGNUP
 ========================================================= */
@@ -1330,43 +1313,30 @@ async function signup(){
     RESET PASSWORD
 ========================================================= */
 async function sendReset(){
-    const email =
-    $("loginEmail").value.trim();
+    const email = $("loginEmail").value.trim().toLowerCase();
     if(!email){
-        return msg(
-            "loginMsg",
-            "Enter your email first.",
-            "error"
-        );
+        return msg("loginMsg","Enter your login email first.","error");
     }
+
     msg(
         "loginMsg",
-        "Sending password reset email..."
+        "If this email has an accessible inbox, a password reset link will be sent. If you created the account with a non-existing/fake email, contact BHAGWATI FULFIL support to reset the password.",
+        "notice"
     );
-    const {
-        error
-    }=
-    await supabaseClient.auth
-    .resetPasswordForEmail(
-        email,
-        {
-            redirectTo:
-            location.origin +
-            location.pathname
+
+    try{
+        const {error}=await supabaseClient.auth.resetPasswordForEmail(
+            email,
+            {
+                redirectTo: location.origin + location.pathname
+            }
+        );
+        if(error){
+            console.warn("Password reset request:", error.message);
         }
-    );
-    if(error){
-        return msg(
-            "loginMsg",
-            error.message,
-            "error"
-        );
+    }catch(e){
+        console.warn("Password reset request failed:", e);
     }
-    msg(
-        "loginMsg",
-        "Password reset email sent. Check Inbox / Spam / Promotions.",
-        "ok"
-    );
 }
 async function updatePassword(){
     const password =
@@ -4757,24 +4727,12 @@ supabaseClient.auth.onAuthStateChange(async (event,session)=>{
         showLogin();
         return;
     }
-    // OAuth (Google) returns to this page with a live session. Handle it here.
+    // Any successful Supabase sign-in returns a live session.
     if(event==="SIGNED_IN" && session && !authFlowBusy){
         try{
             authFlowBusy=true;
             currentUser=session.user;
-            try{
-                await ensureClientAccount();
-            }catch(firstError){
-                // New Google users may not have a mobile number in Google profile data.
-                const needsMobile=/mobile|phone|not-null|null value/i.test(firstError?.message||"");
-                if(needsMobile && !currentUser.user_metadata?.mobile){
-                    const mobile=prompt("Enter your mobile number to finish your BHAGWATI FULFIL client account:","");
-                    if(!mobile?.trim()) throw new Error("Mobile number is required to finish client account setup.");
-                    await ensureClientAccount(currentUser.user_metadata?.full_name||currentUser.user_metadata?.name||"Client",mobile.trim());
-                }else{
-                    throw firstError;
-                }
-            }
+            await ensureClientAccount();
             await loadUser();
         }catch(e){
             msg("loginMsg",e?.message||"Account setup failed. Please try again.","error");
