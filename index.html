@@ -6,6 +6,7 @@
 <title>BHAGWATI FULFIL | Client Portal</title>
 <!-- AUTH-GATE-FIX v2026-09-14 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
 <style>
 *{
     box-sizing:border-box;
@@ -787,30 +788,25 @@ body.auth-locked #adminArea * {
  </div>
 <!-- WALLET & COD BALANCE -->
 <div id="clientWalletBox" class="card hidden app-page">
- <div class="topbar"><div><h2>Wallet & COD Balance</h2><div class="small">Wallet is prepaid balance. COD Payable is money collected on your behalf. Outstanding shows charges due to Bhagwati Fulfil.</div></div><button class="secondary" type="button" onclick="loadClientWallet()">REFRESH</button></div>
+ <div class="topbar"><div><h2>Wallet & COD Balance</h2><div class="small">Wallet is your prepaid balance. Shipment charges are deducted automatically. COD Payable is money collected on your behalf. Outstanding shows charges due to Bhagwati Fulfil.</div></div><button class="secondary" type="button" onclick="loadClientWallet()">REFRESH</button></div>
  <div id="clientWalletMsg"></div>
  <div id="clientWalletSummary" class="settlement-grid"></div>
- <div class="notice"><b>Add Money:</b> Online wallet recharge will be enabled after the payment gateway is activated. Your wallet balance is used automatically for shipment charges.</div>
+ <div class="card" style="margin-top:12px;border:1px solid #dbeafe">
+  <h3>Add Money to Wallet</h3>
+  <div class="small">Pay securely through Cashfree. After successful payment, the wallet balance will be credited automatically.</div>
+  <div class="grid" style="margin-top:10px">
+   <div><label>Recharge Amount ₹</label><input id="walletRechargeAmount" type="number" min="100" step="1" placeholder="Enter amount (minimum ₹100)"></div>
+  </div>
+  <button class="primary" type="button" onclick="startWalletRecharge()">💳 ADD MONEY WITH CASHFREE</button>
+  <div id="walletRechargeMsg" class="small" style="margin-top:8px"></div>
+ </div>
  <h3>Wallet Transactions</h3><div id="clientWalletTransactions">Loading...</div>
  <h3>Outstanding Charges</h3><div id="clientOutstandingTransactions">Loading...</div>
 </div>
 <!-- CLIENT INVOICE HISTORY -->
 <div id="clientInvoiceBox" class="card hidden">
- <h2>Invoice & Payment History</h2>
- <div class="notice">Service invoices are separate from COD Payable and wallet balance. No GST Charged.</div>
- <div id="clientPaymentBox" class="card">
-  <h3>Pay Invoice</h3>
-  <div id="businessPaymentDetails" class="notice">Payment details loading...</div>
-  <div class="grid">
-   <div><label>Invoice</label><select id="clientPayInvoice"></select></div>
-   <div><label>Amount ₹</label><input id="clientPayAmount" type="number" min="1" readonly></div>
-   <div><label>Payment Date</label><input id="clientPayDate" type="date"></div>
-   <div><label>UTR / Transaction ID</label><input id="clientPayUtr" placeholder="Enter UTR / transaction ID"></div>
-  </div>
-  <div class="ratebox" style="margin-top:12px"><b>Quick Pay</b><div class="small">Invoice amount is automatic. Pay using your preferred UPI app, then submit UTR for verification.</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px"><button class="success" type="button" onclick="payInvoicePhonePe()">PHONEPE</button><button class="info" type="button" onclick="payInvoiceGooglePay()">GOOGLE PAY</button><button class="warning" type="button" onclick="payInvoicePaytm()">PAYTM</button><button class="primary" type="button" onclick="payInvoiceUPI()">UPI</button><button class="secondary" type="button" onclick="showBankTransferDetails()">BANK TRANSFER</button></div><div id="quickPayMsg" class="small"></div><div id="quickPayAmount" class="money">₹0.00</div></div>
-  <button class="primary" type="button" onclick="submitClientPayment()">SUBMIT PAYMENT</button>
-  <div id="clientPayMsg"></div>
- </div>
+ <h2>Invoice History</h2>
+ <div class="notice">Service invoices are shown here for your records. Service charges are handled through the Wallet. COD Payable remains separate. No GST Charged.</div>
  <div id="clientInvoiceHistory">Loading...</div>
 </div>
 </section>
@@ -4187,97 +4183,47 @@ function ensurePageBackButton(container, backHandler, label){
 async function loadClientPayments(){
     if(!currentProfile?.client_id) return;
     const cid=Number(currentProfile.client_id);
-    const [ins,ps]=await Promise.all([
-        supabaseClient.from("client_invoices").select("*").eq("client_id",cid).eq("approval_status","Sent").order("created_at",{ascending:false}),
-        supabaseClient.from("client_payment_submissions").select("*").eq("client_id",cid).order("created_at",{ascending:false})
-    ]);
-    if(ins.error){
-        if($("clientInvoiceHistory")) $("clientInvoiceHistory").innerHTML=`<div class="notice error">${esc(ins.error.message)}</div>`;
-    }else{
-        clientInvoices=ins.data||[];
-        renderClientInvoiceHistory();
-        populateClientPayInvoices();
+    const {data,error}=await supabaseClient.from("client_invoices").select("*").eq("client_id",cid).order("created_at",{ascending:false});
+    if(error){
+        if($("clientInvoiceHistory")) $("clientInvoiceHistory").innerHTML=`<div class="notice error">${esc(error.message)}</div>`;
+        return;
     }
-    if(ps.error){
-        if($("clientPayMsg")) msg("clientPayMsg",ps.error.message,"error");
-    }
-    await loadBusinessPaymentSettings();
+    clientInvoices=data||[];
+    renderClientInvoiceHistory();
 }
+const CASHFREE_WALLET_CREATE_ORDER_URL = "https://zldgzojzsoxpyhlhkive.supabase.co/functions/v1/cashfree-wallet-create-order";
+
+async function startWalletRecharge(){
+    if(currentProfile?.role!=="client") return;
+    const amount=Number($("walletRechargeAmount")?.value||0);
+    if(!Number.isFinite(amount)||amount<100) return msg("walletRechargeMsg","Minimum wallet recharge is ₹100.","error");
+    const btn=document.querySelector('button[onclick="startWalletRecharge()"]');
+    if(btn) btn.disabled=true;
+    msg("walletRechargeMsg","Creating secure Cashfree payment...","ok");
+    try{
+        const {data:session}=await supabaseClient.auth.getSession();
+        const token=session?.session?.access_token;
+        if(!token) return msg("walletRechargeMsg","Please login again and try.","error");
+        const res=await fetch(CASHFREE_WALLET_CREATE_ORDER_URL,{
+            method:"POST",
+            headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
+            body:JSON.stringify({amount})
+        });
+        const out=await res.json().catch(()=>({}));
+        if(!res.ok || !out.payment_session_id) return msg("walletRechargeMsg",out.error||out.message||"Cashfree payment could not be started.","error");
+        const cashfree=Cashfree({mode:out.mode||"production"});
+        await cashfree.checkout({paymentSessionId:out.payment_session_id,redirectTarget:"_self"});
+    }catch(e){
+        msg("walletRechargeMsg",e?.message||"Unable to start Cashfree payment.","error");
+    }finally{if(btn) btn.disabled=false;}
+}
+
 function renderClientInvoiceHistory(){
     const rows=clientInvoices||[];
     const box=$("clientInvoiceHistory");
     if(!box) return;
     if(!rows.length){box.innerHTML='<div class="notice">No invoices generated yet.</div>';return;}
     box.innerHTML=rows.map(x=>`<div class="invoice-card"><div class="topbar"><div><b>${esc(x.invoice_no)}</b><div class="small">${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}</div></div><span class="badge ${x.payment_status==='Paid'?'status-paid':'status-pending'}">${esc(x.payment_status||'Pending')}</span></div><p>Orders: ${Number(x.total_orders||0)} · Delivered: ${Number(x.delivered_count||0)} · RTO: ${Number(x.rto_count||0)} · Cancelled: ${Number(x.cancelled_count||0)}</p><p>Shipping: ${money(x.shipping_charges)} · COD/Handling: ${money(x.cod_charges)} · RTO: ${money(x.rto_charges)} · Other: ${money(x.other_charges)}</p><p><b>Total Payable: ${money(x.total_amount)}</b></p>${x.due_date?`<p class="small">Due: ${esc(formatDateIndia(x.due_date))}</p>`:''}${x.paid_at?`<p class="small">Paid on ${esc(formatDateIndia(String(x.paid_at).slice(0,10)))}</p>`:''}</div>`).join('');
-}
-function populateClientPayInvoices(){
-    const el=$("clientPayInvoice");
-    if(!el) return;
-    const pending=(clientInvoices||[]).filter(x=>x.payment_status!=="Paid");
-    el.innerHTML='<option value="">Select pending invoice</option>'+pending.map(x=>`<option value="${escAttr(x.id)}" data-amount="${Number(x.total_amount||0)}">${esc(x.invoice_no)} — ${money(x.total_amount)}</option>`).join("");
-    el.onchange=()=>{
-        const o=el.options[el.selectedIndex];
-        const amt=Number(o?.dataset?.amount||0);
-        $("clientPayAmount").value=amt||"";
-        if($("quickPayAmount")) $("quickPayAmount").textContent=money(amt);
-    };
-    $("clientPayDate").value=getIndiaDate();
-    if($("quickPayAmount")) $("quickPayAmount").textContent="₹0.00";
-}
-async function submitClientPayment(){
-    if(currentProfile?.role!=="client") return;
-    const invoiceId=Number($("clientPayInvoice")?.value), amount=Number($("clientPayAmount")?.value), date=$("clientPayDate")?.value, utr=$("clientPayUtr")?.value.trim();
-    if(!invoiceId||!amount||!date||!utr) return msg("clientPayMsg","Select an invoice and enter payment date and UTR.","error");
-    const invoice=(clientInvoices||[]).find(x=>Number(x.id)===invoiceId);
-    if(!invoice) return msg("clientPayMsg","Invoice not found.","error");
-    if(invoice.payment_status==="Paid") return msg("clientPayMsg","This invoice is already marked Paid.","error");
-    if(Number(invoice.total_amount)!==amount) return msg("clientPayMsg","Payment amount does not match invoice amount.","error");
-    const {data:existing,error:checkError}=await supabaseClient.from("client_payment_submissions").select("id").eq("invoice_id",invoiceId).eq("status","Pending").maybeSingle();
-    if(checkError) return msg("clientPayMsg",checkError.message,"error");
-    if(existing) return msg("clientPayMsg","Payment already submitted and is waiting for verification.","error");
-    const btn=document.querySelector('button[onclick="submitClientPayment()"]');
-    if(btn) btn.disabled=true;
-    try{
-        const {error}=await supabaseClient.from("client_payment_submissions").insert({client_id:Number(currentProfile.client_id),invoice_id:invoiceId,amount,payment_date:date,utr,status:"Pending"});
-        if(error) return msg("clientPayMsg",error.message,"error");
-        msg("clientPayMsg","Payment submitted. Admin will verify and mark the invoice Paid.","ok");
-        $("clientPayUtr").value="";
-        await loadClientPayments();
-    }finally{if(btn) btn.disabled=false;}
-}
-function getSelectedInvoiceForQuickPay(){
-    const id=Number($("clientPayInvoice")?.value);
-    const inv=(clientInvoices||[]).find(x=>Number(x.id)===id);
-    if(!inv||inv.payment_status==="Paid") return null;
-    return inv;
-}
-function buildUpiUrl(inv){
-    const s=businessPaymentSettings;
-    if(!s?.upi_id) return null;
-    const params=new URLSearchParams({pa:String(s.upi_id),pn:String(s.account_name||"BHAGWATI FULFIL"),am:Number(inv.total_amount||0).toFixed(2),cu:"INR",tn:String(inv.invoice_no||"Invoice Payment")});
-    return "upi://pay?"+params.toString();
-}
-function launchPaymentScheme(scheme){
-    const inv=getSelectedInvoiceForQuickPay();
-    if(!inv) return msg("quickPayMsg","First select a pending invoice.","error");
-    const upi=buildUpiUrl(inv);
-    if(!upi) return msg("quickPayMsg","Admin has not added the business UPI ID yet.","error");
-    window.location.href=scheme+"?"+upi.split("?")[1];
-}
-function payInvoiceUPI(){
-    const inv=getSelectedInvoiceForQuickPay();
-    if(!inv) return msg("quickPayMsg","First select a pending invoice.","error");
-    const url=buildUpiUrl(inv);
-    if(!url) return msg("quickPayMsg","Admin has not added the business UPI ID yet.","error");
-    window.location.href=url;
-}
-function payInvoicePhonePe(){launchPaymentScheme("phonepe://pay");}
-function payInvoiceGooglePay(){launchPaymentScheme("tez://upi/pay");}
-function payInvoicePaytm(){launchPaymentScheme("paytmmp://pay");}
-function showBankTransferDetails(){
-    const s=businessPaymentSettings;
-    if(!s) return msg("quickPayMsg","Bank details are not available yet.","error");
-    msg("quickPayMsg",`Bank Transfer — ${s.bank_name||""} | A/C: ${s.account_number||""} | IFSC: ${s.ifsc||""}. Transfer the exact invoice amount, then enter UTR below and submit payment.`);
 }
 async function loadBusinessPaymentSettings(){
     const {data,error}=await supabaseClient.from("business_payment_settings").select("*").eq("id",1).maybeSingle();
