@@ -4447,6 +4447,18 @@ function showAdminPage(page){
         setTimeout(()=>document.getElementById('adminStatusCard')?.scrollIntoView({behavior:'smooth',block:'start'}),50);
     }
 }
+function addDaysISO(dateString, days){
+    const d = new Date(String(dateString).slice(0,10) + "T00:00:00");
+    d.setDate(d.getDate() + Number(days || 0));
+    return [d.getFullYear(), String(d.getMonth()+1).padStart(2,"0"), String(d.getDate()).padStart(2,"0")].join("-");
+}
+function mondayOf(dateString){
+    const d = new Date(String(dateString).slice(0,10) + "T00:00:00");
+    const day = d.getDay();
+    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+    return [d.getFullYear(), String(d.getMonth()+1).padStart(2,"0"), String(d.getDate()).padStart(2,"0")].join("-");
+}
+
 function renderClientDashboard(){
     const rows=clientOrders||[];
     const count=s=>rows.filter(o=>String(o.status||'').toLowerCase()===s).length;
