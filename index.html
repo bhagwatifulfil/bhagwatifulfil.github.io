@@ -797,7 +797,7 @@ body.auth-locked #adminArea * {
 <!-- CLIENT INVOICE HISTORY -->
 <div id="clientInvoiceBox" class="card hidden">
  <h2>Invoice & Payment History</h2>
- <div class="notice">Monday–Saturday service charges are invoiced separately from COD settlement. No GST Charged.</div>
+ <div class="notice">Service invoices are separate from COD Payable and wallet balance. No GST Charged.</div>
  <div id="clientPaymentBox" class="card">
   <h3>Pay Invoice</h3>
   <div id="businessPaymentDetails" class="notice">Payment details loading...</div>
@@ -3059,7 +3059,7 @@ adminClientData
  <button class="secondary" type="button" onclick="toggleClientBankEdit(${Number(c.id)},${!c.bank_edit_allowed})">${c.bank_edit_allowed ? "REVOKE EDIT" : "ALLOW EDIT"}</button>
 </div>
 <div class="client-bank" style="margin-top:10px;padding:12px;border:1px solid #e5e7eb;border-radius:10px">
- <b>COD Settlement Bank Details</b>
+ <b>Client Bank Details</b>
  <p>
     Account Holder:
     ${esc(
@@ -4210,6 +4210,180 @@ function ensurePageBackButton(container, backHandler, label){
     container.insertBefore(row,container.firstChild);
 }
 
+
+/* =========================================================
+   CLIENT INVOICE / PAYMENT FUNCTIONS
+========================================================= */
+async function loadClientPayments(){
+    if(!currentProfile?.client_id) return;
+    const cid=Number(currentProfile.client_id);
+    const [ins,ps]=await Promise.all([
+        supabaseClient.from("client_invoices").select("*").eq("client_id",cid).eq("approval_status","Sent").order("created_at",{ascending:false}),
+        supabaseClient.from("client_payment_submissions").select("*").eq("client_id",cid).order("created_at",{ascending:false})
+    ]);
+    if(ins.error){
+        if($("clientInvoiceHistory")) $("clientInvoiceHistory").innerHTML=`<div class="notice error">${esc(ins.error.message)}</div>`;
+    }else{
+        clientInvoices=ins.data||[];
+        renderClientInvoiceHistory();
+        populateClientPayInvoices();
+    }
+    if(ps.error){
+        if($("clientPayMsg")) msg("clientPayMsg",ps.error.message,"error");
+    }
+    await loadBusinessPaymentSettings();
+}
+function renderClientInvoiceHistory(){
+    const rows=clientInvoices||[];
+    const box=$("clientInvoiceHistory");
+    if(!box) return;
+    if(!rows.length){box.innerHTML='<div class="notice">No invoices generated yet.</div>';return;}
+    box.innerHTML=rows.map(x=>`<div class="invoice-card"><div class="topbar"><div><b>${esc(x.invoice_no)}</b><div class="small">${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}</div></div><span class="badge ${x.payment_status==='Paid'?'status-paid':'status-pending'}">${esc(x.payment_status||'Pending')}</span></div><p>Orders: ${Number(x.total_orders||0)} · Delivered: ${Number(x.delivered_count||0)} · RTO: ${Number(x.rto_count||0)} · Cancelled: ${Number(x.cancelled_count||0)}</p><p>Shipping: ${money(x.shipping_charges)} · COD/Handling: ${money(x.cod_charges)} · RTO: ${money(x.rto_charges)} · Other: ${money(x.other_charges)}</p><p><b>Total Payable: ${money(x.total_amount)}</b></p>${x.due_date?`<p class="small">Due: ${esc(formatDateIndia(x.due_date))}</p>`:''}${x.paid_at?`<p class="small">Paid on ${esc(formatDateIndia(String(x.paid_at).slice(0,10)))}</p>`:''}</div>`).join('');
+}
+function populateClientPayInvoices(){
+    const el=$("clientPayInvoice");
+    if(!el) return;
+    const pending=(clientInvoices||[]).filter(x=>x.payment_status!=="Paid");
+    el.innerHTML='<option value="">Select pending invoice</option>'+pending.map(x=>`<option value="${escAttr(x.id)}" data-amount="${Number(x.total_amount||0)}">${esc(x.invoice_no)} — ${money(x.total_amount)}</option>`).join("");
+    el.onchange=()=>{
+        const o=el.options[el.selectedIndex];
+        const amt=Number(o?.dataset?.amount||0);
+        $("clientPayAmount").value=amt||"";
+        if($("quickPayAmount")) $("quickPayAmount").textContent=money(amt);
+    };
+    $("clientPayDate").value=getIndiaDate();
+    if($("quickPayAmount")) $("quickPayAmount").textContent="₹0.00";
+}
+async function submitClientPayment(){
+    if(currentProfile?.role!=="client") return;
+    const invoiceId=Number($("clientPayInvoice")?.value), amount=Number($("clientPayAmount")?.value), date=$("clientPayDate")?.value, utr=$("clientPayUtr")?.value.trim();
+    if(!invoiceId||!amount||!date||!utr) return msg("clientPayMsg","Select an invoice and enter payment date and UTR.","error");
+    const invoice=(clientInvoices||[]).find(x=>Number(x.id)===invoiceId);
+    if(!invoice) return msg("clientPayMsg","Invoice not found.","error");
+    if(invoice.payment_status==="Paid") return msg("clientPayMsg","This invoice is already marked Paid.","error");
+    if(Number(invoice.total_amount)!==amount) return msg("clientPayMsg","Payment amount does not match invoice amount.","error");
+    const {data:existing,error:checkError}=await supabaseClient.from("client_payment_submissions").select("id").eq("invoice_id",invoiceId).eq("status","Pending").maybeSingle();
+    if(checkError) return msg("clientPayMsg",checkError.message,"error");
+    if(existing) return msg("clientPayMsg","Payment already submitted and is waiting for verification.","error");
+    const btn=document.querySelector('button[onclick="submitClientPayment()"]');
+    if(btn) btn.disabled=true;
+    try{
+        const {error}=await supabaseClient.from("client_payment_submissions").insert({client_id:Number(currentProfile.client_id),invoice_id:invoiceId,amount,payment_date:date,utr,status:"Pending"});
+        if(error) return msg("clientPayMsg",error.message,"error");
+        msg("clientPayMsg","Payment submitted. Admin will verify and mark the invoice Paid.","ok");
+        $("clientPayUtr").value="";
+        await loadClientPayments();
+    }finally{if(btn) btn.disabled=false;}
+}
+function getSelectedInvoiceForQuickPay(){
+    const id=Number($("clientPayInvoice")?.value);
+    const inv=(clientInvoices||[]).find(x=>Number(x.id)===id);
+    if(!inv||inv.payment_status==="Paid") return null;
+    return inv;
+}
+function buildUpiUrl(inv){
+    const s=businessPaymentSettings;
+    if(!s?.upi_id) return null;
+    const params=new URLSearchParams({pa:String(s.upi_id),pn:String(s.account_name||"BHAGWATI FULFIL"),am:Number(inv.total_amount||0).toFixed(2),cu:"INR",tn:String(inv.invoice_no||"Invoice Payment")});
+    return "upi://pay?"+params.toString();
+}
+function launchPaymentScheme(scheme){
+    const inv=getSelectedInvoiceForQuickPay();
+    if(!inv) return msg("quickPayMsg","First select a pending invoice.","error");
+    const upi=buildUpiUrl(inv);
+    if(!upi) return msg("quickPayMsg","Admin has not added the business UPI ID yet.","error");
+    window.location.href=scheme+"?"+upi.split("?")[1];
+}
+function payInvoiceUPI(){
+    const inv=getSelectedInvoiceForQuickPay();
+    if(!inv) return msg("quickPayMsg","First select a pending invoice.","error");
+    const url=buildUpiUrl(inv);
+    if(!url) return msg("quickPayMsg","Admin has not added the business UPI ID yet.","error");
+    window.location.href=url;
+}
+function payInvoicePhonePe(){launchPaymentScheme("phonepe://pay");}
+function payInvoiceGooglePay(){launchPaymentScheme("tez://upi/pay");}
+function payInvoicePaytm(){launchPaymentScheme("paytmmp://pay");}
+function showBankTransferDetails(){
+    const s=businessPaymentSettings;
+    if(!s) return msg("quickPayMsg","Bank details are not available yet.","error");
+    msg("quickPayMsg",`Bank Transfer — ${s.bank_name||""} | A/C: ${s.account_number||""} | IFSC: ${s.ifsc||""}. Transfer the exact invoice amount, then enter UTR below and submit payment.`);
+}
+async function loadBusinessPaymentSettings(){
+    const {data,error}=await supabaseClient.from("business_payment_settings").select("*").eq("id",1).maybeSingle();
+    if(error){
+        if(currentProfile?.role==="admin"&&$("paySettingsMsg")) msg("paySettingsMsg",error.message,"error");
+        return;
+    }
+    businessPaymentSettings=data||null;
+    if(currentProfile?.role==="admin"&&data){
+        $("payAccountName").value=data.account_name||"";
+        $("payBankName").value=data.bank_name||"";
+        $("payAccountNumber").value=data.account_number||"";
+        $("payIfsc").value=data.ifsc||"";
+        $("payUpi").value=data.upi_id||"";
+        $("payQrUrl").value=data.qr_url||"";
+    }
+    const el=$("businessPaymentDetails");
+    if(el) el.innerHTML=data?`<b>Account:</b> ${esc(data.account_name||"")}<br><b>Bank:</b> ${esc(data.bank_name||"")}<br><b>A/C No.:</b> ${esc(data.account_number||"")}<br><b>IFSC:</b> ${esc(data.ifsc||"")}<br><b>UPI:</b> ${esc(data.upi_id||"")}${data.qr_url?`<br><a href="${safe(data.qr_url)}" target="_blank" rel="noopener">OPEN / SCAN UPI QR</a>`:""}`:'<span>Admin has not added payment details yet.</span>';
+}
+async function saveBusinessPaymentSettings(){
+    if(currentProfile?.role!=="admin") return;
+    const payload={id:1,account_name:$("payAccountName").value.trim(),bank_name:$("payBankName").value.trim(),account_number:$("payAccountNumber").value.trim(),ifsc:$("payIfsc").value.trim(),upi_id:$("payUpi").value.trim(),qr_url:$("payQrUrl").value.trim(),updated_at:new Date().toISOString()};
+    const {error}=await supabaseClient.from("business_payment_settings").upsert(payload,{onConflict:"id"});
+    if(error) return msg("paySettingsMsg",error.message,"error");
+    msg("paySettingsMsg","Payment details saved successfully.","ok");
+    await loadBusinessPaymentSettings();
+}
+
+/* =========================================================
+   WALLET SYSTEM
+========================================================= */
+async function loadClientWallet(){
+    const cid=Number(currentProfile?.client_id||currentClient?.id||0);
+    if(!cid) return msg("clientWalletMsg","Client profile is not linked to this account.","error");
+    const summary=$("clientWalletSummary"), txBox=$("clientWalletTransactions"), outBox=$("clientOutstandingTransactions");
+    if(summary) summary.innerHTML='<div class="ratebox"><b>Wallet Balance</b><div class="money">Loading...</div></div><div class="ratebox"><b>COD Payable</b><div class="money">Loading...</div></div><div class="ratebox"><b>Outstanding</b><div class="money">Loading...</div></div>';
+    const [walletRes,txRes,outRes]=await Promise.all([
+        supabaseClient.from("client_wallets").select("*").eq("client_id",cid).maybeSingle(),
+        supabaseClient.from("wallet_transactions").select("*").eq("client_id",cid).order("created_at",{ascending:false}).limit(50),
+        supabaseClient.from("client_outstanding_transactions").select("*").eq("client_id",cid).order("created_at",{ascending:false}).limit(50)
+    ]);
+    if(walletRes.error){
+        if(summary) summary.innerHTML='';
+        return msg("clientWalletMsg","Wallet loading error: "+walletRes.error.message,"error");
+    }
+    const w=walletRes.data||{wallet_balance:0,cod_payable:0,outstanding:0,low_balance_limit:100};
+    const balance=Number(w.wallet_balance||0), codPayable=Number(w.cod_payable||0), outstanding=Number(w.outstanding||0), low=Number(w.low_balance_limit??100);
+    if(summary) summary.innerHTML=`<div class="ratebox"><b>Wallet Balance</b><div class="money">₹${balance.toFixed(2)}</div>${balance<=low?'<div class="small">Low balance — recharge before booking.</div>':''}</div><div class="ratebox"><b>COD Payable</b><div class="money">₹${codPayable.toFixed(2)}</div><div class="small">Collected on your behalf</div></div><div class="ratebox"><b>Outstanding</b><div class="money">₹${outstanding.toFixed(2)}</div><div class="small">Due to Bhagwati Fulfil</div></div>`;
+    if(txRes.error){
+        if(txBox) txBox.innerHTML=`<div class="notice error">${esc(txRes.error.message)}</div>`;
+    }else if(txBox){
+        const rows=txRes.data||[];
+        txBox.innerHTML=rows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Balance</th><th>Description</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(formatDateIndia(String(x.created_at||'').slice(0,10)))}</td><td>${esc(x.transaction_type||'—')}</td><td>₹${Number(x.amount||0).toFixed(2)}</td><td>₹${Number(x.balance_after||0).toFixed(2)}</td><td>${esc(x.description||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="notice">No wallet transactions yet.</div>';
+    }
+    if(outRes.error){
+        if(outBox) outBox.innerHTML=`<div class="notice error">${esc(outRes.error.message)}</div>`;
+    }else if(outBox){
+        const rows=outRes.data||[];
+        outBox.innerHTML=rows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Charge</th><th>Amount</th><th>Paid</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(formatDateIndia(String(x.created_at||'').slice(0,10)))}</td><td>${esc(x.charge_type||'—')}</td><td>₹${Number(x.amount||0).toFixed(2)}</td><td>₹${Number(x.paid_amount||0).toFixed(2)}</td><td>${esc(x.status||'Pending')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="notice">No outstanding charges.</div>';
+    }
+    const notice=$("clientWalletMsg");
+    if(notice) notice.innerHTML='';
+}
+
+async function loadAdminWallets(){
+    if(currentProfile?.role!=="admin") return;
+    const box=$("adminWalletHistory");
+    if(box) box.innerHTML='<div class="notice">Loading wallets...</div>';
+    const {data,error}=await supabaseClient.from("client_wallets").select("*").order("client_id",{ascending:true});
+    if(error){ if(box) box.innerHTML=`<div class="notice error">${esc(error.message)}</div>`; return; }
+    const wallets=data||[];
+    if(!wallets.length){ if(box) box.innerHTML='<div class="notice">No client wallets found.</div>'; return; }
+    const clients=adminClientData||[];
+    if(box) box.innerHTML=`<div class="table-wrap"><table class="data-table"><thead><tr><th>Client</th><th>Wallet Balance</th><th>COD Payable</th><th>Outstanding</th><th>Low Limit</th></tr></thead><tbody>${wallets.map(w=>{const c=clients.find(x=>Number(x.id)===Number(w.client_id));const name=c?.Client_name||('Client '+w.client_id);const no=c?.client_number||'';return `<tr><td><b>${esc(name)}</b><br><span class="small">${esc(no)}</span></td><td>₹${Number(w.wallet_balance||0).toFixed(2)}</td><td>₹${Number(w.cod_payable||0).toFixed(2)}</td><td>₹${Number(w.outstanding||0).toFixed(2)}</td><td>₹${Number(w.low_balance_limit??100).toFixed(2)}</td></tr>`}).join('')}</tbody></table></div>`;
+}
+
 function showClientPage(page){
     hideMenus();
     document.querySelectorAll('#clientArea .app-page').forEach(x=>x.classList.remove('active'));
@@ -4237,6 +4411,8 @@ function showClientPage(page){
       };
       ensurePageBackButton(target,()=>showClientPage('dashboard'),labels[page]||'Dashboard');
     }
+    if(page==='wallet'){ loadClientWallet(); }
+    if(page==='invoices'){ loadClientPayments(); }
     if(page==='reports'){
         setTimeout(()=>document.getElementById('clientDailySummary')?.scrollIntoView({behavior:'smooth',block:'start'}),50);
     }
@@ -4261,6 +4437,7 @@ function showAdminPage(page){
         }
     }
     if(page==='wallet'){loadAdminWallets();}
+    if(page==='bank'){loadBusinessPaymentSettings();}
     if(page==='payments'){
         $('adminInvoicesCard')?.classList.add('active');
         setTimeout(()=>document.getElementById('adminInvoiceHistory')?.scrollIntoView({behavior:'smooth',block:'start'}),50);
