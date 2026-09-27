@@ -1197,6 +1197,7 @@ let currentProfile = null;
 let currentClient = null;
 let clientOrders = [];
 let adminBookingData = [];
+let weightAdjustmentsByBooking = {};
 let adminClientData = [];
 let adminRefreshTimer = null;
 let knownCancellationIds = new Set();
@@ -1207,8 +1208,6 @@ let clientSupportItems = [];
 let adminSupportItems = [];
 let openAdminDetailId = null;
 let businessPaymentSettings = null;
-let currentClientRateConfig = null;
-let currentClientRateSource = "global";
 
 /* INITIAL AUTH GATE
    Login screen is the only visible screen until Supabase auth succeeds. */
@@ -1674,7 +1673,6 @@ async function loadClient(){
     }
     currentClient =
     data;
-    await loadClientEffectiveRateConfig();
     $("profileName").value =
     data.Client_name || "";
     $("profileMobile").value =
@@ -1917,37 +1915,8 @@ async function saveRateSettings(){
     const {error}=await supabaseClient.from("rate_settings").upsert({id:1,config:cfg,updated_at:new Date().toISOString()},{onConflict:"id"});
     if(error){ msg("rateSettingsMsg",error.message,"error"); return; }
     window.bhagwatiRateConfig=cfg;
-    if(currentClientRateSource!=="client") currentClientRateConfig=null;
     calculateRate();
     msg("rateSettingsMsg","Rate settings saved. New bookings will use the new rates.","ok");
-}
-
-async function loadClientEffectiveRateConfig(){
-    currentClientRateConfig = null;
-    currentClientRateSource = "global";
-    const clientId = Number(currentProfile?.client_id);
-    if(!clientId) return;
-
-    const {data,error}=await supabaseClient
-        .from("client_rate_settings")
-        .select("enabled,config")
-        .eq("client_id",clientId)
-        .maybeSingle();
-
-    if(error){
-        // If the client-rate table/policy is unavailable, keep the global rate preview.
-        console.warn("Client custom rate lookup failed; using global rates.",error.message);
-        return;
-    }
-    if(!data?.enabled || !data?.config) return;
-
-    const c=normalizeClientRateConfig(data.config);
-    currentClientRateConfig={
-        rates:{A:c.A,B:c.B,C:c.C,D:c.D},
-        extra:{A:c.extraAB,B:c.extraAB,C:c.extraCD,D:c.extraCD},
-        cod:c.cod
-    };
-    currentClientRateSource="client";
 }
 
 function calculateRate(){
@@ -1975,7 +1944,7 @@ function calculateRate(){
         return;
     }
 
-    const cfg = currentClientRateConfig || window.bhagwatiRateConfig || DEFAULT_RATE_CONFIG;
+    const cfg = window.bhagwatiRateConfig || DEFAULT_RATE_CONFIG;
     const RATE_CARD = cfg.rates;
     const EXTRA_RATE = cfg.extra;
 
@@ -2424,8 +2393,17 @@ async function loadOrders(){
         `<div class="notice error">${esc(error.message)}</div>`;
         return;
     }
-    clientOrders =
-    data || [];
+    clientOrders = data || [];
+    weightAdjustmentsByBooking = {};
+    const bookingIds = clientOrders.map(x=>Number(x.id)).filter(Number.isInteger);
+    if(bookingIds.length){
+        const {data:waRows,error:waError}=await supabaseClient
+          .from("booking_weight_adjustments")
+          .select("*")
+          .in("booking_id",bookingIds)
+          .order("created_at",{ascending:false});
+        if(!waError){ (waRows||[]).forEach(x=>{ if(!weightAdjustmentsByBooking[x.booking_id]) weightAdjustmentsByBooking[x.booking_id]=x; }); }
+    }
     loadClientWallet();
     populateMonth(
         "clientMonth",
@@ -2957,6 +2935,17 @@ return `
          ${Number(o.height_cm||0)} cm
      </p>
  </div>
+${(()=>{const wa=weightAdjustmentsByBooking[o.id]; if(!wa) return ""; const adj=Number(wa.adjustment_amount||0); return `
+<div class="detail-box">
+ <h4>⚖️ Weight Verification</h4>
+ <p><b>Declared Weight:</b> ${Number(wa.declared_actual_weight_g||0)} g</p>
+ <p><b>Verified Weight:</b> ${Number(wa.verified_actual_weight_g||0)} g</p>
+ <p><b>Chargeable Weight:</b> ${Number(wa.final_chargeable_weight_kg||wa.verified_chargeable_weight_kg||0)} kg</p>
+ <p><b>Adjustment:</b> ${adj>0?"Additional Charge ":adj<0?"Credit ":"No Change "}₹${Math.abs(adj).toFixed(2)}</p>
+ <p><b>Status:</b> ${esc(wa.status||"Applied")}</p>
+ ${wa.proof_path?`<button class="info" type="button" onclick="downloadWeightProof(${o.id})">VIEW WEIGHT PROOF</button>`:""}
+ ${wa.reason?`<p class="small"><b>Note:</b> ${esc(wa.reason)}</p>`:""}
+</div>`;})()}
 </div>
 <div class="admin-actions">
  ${links}
@@ -3486,8 +3475,13 @@ async function loadAdminBookings(){
         </div>`;
         return;
     }
-    adminBookingData =
-    data || [];
+    adminBookingData = data || [];
+    weightAdjustmentsByBooking = {};
+    const adminIds = adminBookingData.map(x=>Number(x.id)).filter(Number.isInteger);
+    if(adminIds.length){
+        const {data:waRows}=await supabaseClient.from("booking_weight_adjustments").select("*").in("booking_id",adminIds).order("created_at",{ascending:false});
+        (waRows||[]).forEach(x=>{ if(!weightAdjustmentsByBooking[x.booking_id]) weightAdjustmentsByBooking[x.booking_id]=x; });
+    }
     populateMonth(
         "adminMonth",
         adminBookingData
@@ -4011,6 +4005,20 @@ return `
      `
  }
 </div>
+<div class="uploadbox" style="margin-top:12px;border-color:#f59e0b">
+ <h4 style="margin:0 0 8px">⚖️ Weight Verification / Proof</h4>
+ <div class="grid">
+  <div><label>Declared Weight</label><input value="${Number(o.actual_weight_g||0)} g" disabled></div>
+  <div><label>Verified Genz Weight (grams)</label><input id="verifiedWeight-${o.id}" type="number" min="1" step="1" value="${escAttr(o.verified_actual_weight_g||"")}" placeholder="e.g. 500"></div>
+ </div>
+ <label>Proof Photo / PDF</label>
+ <input id="weightProof-${o.id}" type="file" accept="image/jpeg,image/png,application/pdf">
+ <div class="small">Upload Genz/courier weight proof. JPG, PNG or PDF. Maximum 50 MB.</div>
+ <label>Reason / Note</label>
+ <input id="weightReason-${o.id}" placeholder="e.g. Genz verified 500g instead of declared 250g" value="${escAttr(weightAdjustmentsByBooking[o.id]?.reason||"")}">
+ ${o.weight_adjustment_status==='Applied'?`<div class="notice ok" style="margin-top:8px">Weight adjustment already applied: ₹${Number(o.weight_adjustment_amount||0).toFixed(2)}</div>`:`<button type="button" class="secondary" onclick="applyWeightAdjustmentFromAdmin(${o.id})">UPLOAD PROOF & APPLY WEIGHT ADJUSTMENT</button>`}
+ <div id="weightAdjMsg-${o.id}" class="small"></div>
+</div>
 <button
  type="button"
  class="success"
@@ -4228,6 +4236,55 @@ async function uploadLabelFile(
      throw error;
     return path;
 }
+/* =========================================================
+    WEIGHT PROOF / ADJUSTMENT
+========================================================= */
+async function uploadWeightProof(id,file){
+    if(!file) throw Error("Weight proof file is required.");
+    const allowed=["image/jpeg","image/png","application/pdf"];
+    if(!allowed.includes(file.type)) throw Error("Only JPG, PNG or PDF proof is allowed.");
+    if(file.size>50*1024*1024) throw Error("Proof must be 50 MB or smaller.");
+    const o=adminBookingData.find(x=>Number(x.id)===Number(id));
+    if(!o) throw Error("Booking not found.");
+    const ext=file.type==="application/pdf"?"pdf":file.type==="image/png"?"png":"jpg";
+    const path=`${o.client_id}/${o.id}_weight_proof.${ext}`;
+    const {error}=await supabaseClient.storage.from("shipping-labels").upload(path,file,{upsert:true,contentType:file.type});
+    if(error) throw error;
+    return path;
+}
+async function applyWeightAdjustmentFromAdmin(id){
+    const o=adminBookingData.find(x=>Number(x.id)===Number(id));
+    if(!o) return;
+    const verified=Number($(`verifiedWeight-${id}`)?.value||0);
+    const file=$(`weightProof-${id}`)?.files?.[0]||null;
+    const reason=$(`weightReason-${id}`)?.value?.trim()||"";
+    const out=$(`weightAdjMsg-${id}`);
+    if(!verified){if(out)out.textContent="Enter verified Genz weight.";return;}
+    if(!file){if(out)out.textContent="Upload weight proof first.";return;}
+    try{
+      if(out)out.textContent="Uploading proof and applying adjustment...";
+      const path=await uploadWeightProof(id,file);
+      const {data,error}=await supabaseClient.rpc("apply_weight_adjustment",{
+        p_booking_id:Number(id),p_verified_actual_weight_g:verified,p_proof_path:path,
+        p_proof_file_name:file.name,p_proof_mime_type:file.type,p_reason:reason
+      });
+      if(error) throw error;
+      if(out)out.textContent=`✅ Applied. Adjustment ₹${Math.abs(Number(data?.adjustment||0)).toFixed(2)}.`;
+      await loadAdminBookings();
+      await loadAdminStats();
+      const d=$(`admin-${id}`); if(d)d.classList.add("open");
+    }catch(e){console.error(e);if(out)out.textContent="❌ "+(e.message||String(e));}
+}
+async function downloadWeightProof(id){
+    const wa=weightAdjustmentsByBooking[id];
+    if(!wa?.proof_path) return alert("Weight proof is not available.");
+    try{
+      const {data,error}=await supabaseClient.storage.from("shipping-labels").download(wa.proof_path);
+      if(error) throw error;
+      const url=URL.createObjectURL(data); const a=document.createElement("a"); a.href=url; a.target="_blank"; a.download=wa.proof_file_name||"weight-proof"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),30000);
+    }catch(e){alert("Unable to open weight proof: "+(e.message||String(e)));}
+}
+
 /* =========================================================
     UPDATE BOOKING
 ========================================================= */
@@ -4971,8 +5028,6 @@ async function logout(){
     currentUser=null;
     currentProfile=null;
     currentClient=null;
-    currentClientRateConfig=null;
-    currentClientRateSource="global";
     clientOrders=[];
     adminBookingData=[];
     adminClientData=[];
