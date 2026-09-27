@@ -858,7 +858,7 @@ header{background:linear-gradient(135deg,#171b24 0%,#242936 100%);border:1px sol
   <div class="header-actions"><button class="secondary mini-btn" type="button" onclick="refreshAdminDashboard()">↻</button><button class="menu-btn" type="button" aria-label="Open menu" onclick="toggleAppMenu('adminMenu')">⋮</button></div>
  </div>
  <div id="adminMenu" class="app-menu hidden">
-  <button type="button" onclick="showAdminPage('dashboard')">Dashboard</button><button type="button" onclick="showAdminPage('clients')">Clients</button><button type="button" onclick="showAdminPage('shipments')">All Shipments</button><button type="button" onclick="showAdminPage('invoices')">Client Invoices</button><button type="button" onclick="showAdminPage('payments')">Payment Submissions</button><button type="button" onclick="showAdminPage('wallet')">Client Wallets</button><button type="button" onclick="showAdminPage('rates')">Rate Settings</button><button type="button" onclick="showAdminPage('bank')">Business Payment Details</button><button type="button" onclick="showAdminPage('support')">Support</button><button type="button" onclick="showAdminPage('settings')">Settings</button><button type="button" class="menu-danger" onclick="logout()">Logout</button>
+  <button type="button" onclick="showAdminPage('dashboard')">Dashboard</button><button type="button" onclick="showAdminPage('clients')">Clients</button><button type="button" onclick="showAdminPage('shipments')">All Shipments</button><button type="button" onclick="showAdminPage('invoices')">Client Invoices</button><button type="button" onclick="showAdminPage('payments')">Payment Submissions</button><button type="button" onclick="showAdminPage('wallet')">Client Wallets</button><button type="button" onclick="showAdminPage('rates')">Rate Settings</button><button type="button" onclick="showAdminPage('clientrates')">Client-wise Rates</button><button type="button" onclick="showAdminPage('bank')">Business Payment Details</button><button type="button" onclick="showAdminPage('support')">Support</button><button type="button" onclick="showAdminPage('settings')">Settings</button><button type="button" class="menu-danger" onclick="logout()">Logout</button>
  </div>
  <div id="adminMsg"></div>
  <div id="adminDashboardHome" class="card admin-page active">
@@ -1057,6 +1057,48 @@ header{background:linear-gradient(135deg,#171b24 0%,#242936 100%);border:1px sol
  </div>
  <button class="success" type="button" onclick="saveRateSettings()">SAVE RATE SETTINGS</button>
 </div>
+<!-- CLIENT-WISE RATE MANAGEMENT -->
+<div class="card admin-page" id="adminClientRatesCard">
+ <div class="topbar">
+  <div>
+   <h2>Client-wise Rates</h2>
+   <div class="small">Customize rates for one selected client only. Other clients continue using normal Rate Settings.</div>
+  </div>
+  <button class="secondary" type="button" onclick="loadClientRateSettings(true)">REFRESH</button>
+ </div>
+ <div id="clientRateMsg"></div>
+ <div class="grid">
+  <div>
+   <label>Select Client</label>
+   <select id="clientRateClient" onchange="loadClientRateSettings()">
+    <option value="">Select Client</option>
+   </select>
+  </div>
+  <div>
+   <label>Custom Rate</label>
+   <select id="clientRateEnabled" onchange="toggleClientRateEditor()">
+    <option value="false">OFF — Use Normal Rates</option>
+    <option value="true">ON — Use This Client's Custom Rates</option>
+   </select>
+  </div>
+ </div>
+ <div id="clientRateEditor" class="hidden">
+  <div class="notice"><b>Only this selected client is affected.</b> Global Rate Settings are not changed.</div>
+  <div class="notice"><b>Weight slabs:</b> 0–0.25kg, 0.25–0.50kg, 0.50–0.75kg, 0.75–1kg, 1–1.5kg, 1.5–2kg, 2–3kg, 3–4kg, 4–5kg. Above 5kg uses the extra/0.5kg rate.</div>
+  <div class="grid">
+   <div><label>Zone A – Same City</label><input id="clientRateA" placeholder="40,45,55,65,75,85,110,125,145"></div>
+   <div><label>Zone B – Same State</label><input id="clientRateB" placeholder="45,50,65,75,90,100,120,140,160"></div>
+   <div><label>Zone C – Other State</label><input id="clientRateC" placeholder="50,55,75,90,105,120,145,160,180"></div>
+   <div><label>Zone D – Special</label><input id="clientRateD" placeholder="55,65,85,100,120,140,160,190,190"></div>
+   <div><label>Extra / 0.5kg – A</label><input id="clientExtraA" type="number" min="0" step="0.01"></div>
+   <div><label>Extra / 0.5kg – B</label><input id="clientExtraB" type="number" min="0" step="0.01"></div>
+   <div><label>Extra / 0.5kg – C</label><input id="clientExtraC" type="number" min="0" step="0.01"></div>
+   <div><label>Extra / 0.5kg – D</label><input id="clientExtraD" type="number" min="0" step="0.01"></div>
+   <div><label>COD Handling</label><input id="clientRateCod" type="number" min="0" step="0.01"></div>
+  </div>
+  <button class="success" type="button" onclick="saveClientRateSettings()">SAVE CLIENT RATE</button>
+ </div>
+</div>
 <!-- CLIENT INVOICES ADMIN -->
 <div class="card admin-page" id="adminInvoicesCard">
  <div class="topbar">
@@ -1165,6 +1207,8 @@ let clientSupportItems = [];
 let adminSupportItems = [];
 let openAdminDetailId = null;
 let businessPaymentSettings = null;
+let currentClientRateConfig = null;
+let currentClientRateSource = "global";
 
 /* INITIAL AUTH GATE
    Login screen is the only visible screen until Supabase auth succeeds. */
@@ -1630,6 +1674,7 @@ async function loadClient(){
     }
     currentClient =
     data;
+    await loadClientEffectiveRateConfig();
     $("profileName").value =
     data.Client_name || "";
     $("profileMobile").value =
@@ -1872,8 +1917,37 @@ async function saveRateSettings(){
     const {error}=await supabaseClient.from("rate_settings").upsert({id:1,config:cfg,updated_at:new Date().toISOString()},{onConflict:"id"});
     if(error){ msg("rateSettingsMsg",error.message,"error"); return; }
     window.bhagwatiRateConfig=cfg;
+    if(currentClientRateSource!=="client") currentClientRateConfig=null;
     calculateRate();
     msg("rateSettingsMsg","Rate settings saved. New bookings will use the new rates.","ok");
+}
+
+async function loadClientEffectiveRateConfig(){
+    currentClientRateConfig = null;
+    currentClientRateSource = "global";
+    const clientId = Number(currentProfile?.client_id);
+    if(!clientId) return;
+
+    const {data,error}=await supabaseClient
+        .from("client_rate_settings")
+        .select("enabled,config")
+        .eq("client_id",clientId)
+        .maybeSingle();
+
+    if(error){
+        // If the client-rate table/policy is unavailable, keep the global rate preview.
+        console.warn("Client custom rate lookup failed; using global rates.",error.message);
+        return;
+    }
+    if(!data?.enabled || !data?.config) return;
+
+    const c=normalizeClientRateConfig(data.config);
+    currentClientRateConfig={
+        rates:{A:c.A,B:c.B,C:c.C,D:c.D},
+        extra:{A:c.extraAB,B:c.extraAB,C:c.extraCD,D:c.extraCD},
+        cod:c.cod
+    };
+    currentClientRateSource="client";
 }
 
 function calculateRate(){
@@ -1901,7 +1975,7 @@ function calculateRate(){
         return;
     }
 
-    const cfg = window.bhagwatiRateConfig || DEFAULT_RATE_CONFIG;
+    const cfg = currentClientRateConfig || window.bhagwatiRateConfig || DEFAULT_RATE_CONFIG;
     const RATE_CARD = cfg.rates;
     const EXTRA_RATE = cfg.extra;
 
@@ -3070,6 +3144,144 @@ async function autoGenerateWeeklyDraftInvoices(){
    }catch(e){console.warn("Weekly draft invoice error",c.id,e);}
  }
 }
+async /* =========================================================
+   CLIENT-WISE RATE MANAGEMENT
+========================================================= */
+const DEFAULT_CLIENT_RATE_CONFIG = {
+    A:[40,45,55,65,75,85,110,125,145],
+    B:[45,50,65,75,90,100,120,140,160],
+    C:[50,55,75,90,105,120,145,160,180],
+    D:[55,65,85,100,120,140,160,190,190],
+    extraAB:20,
+    extraCD:25,
+    cod:25
+};
+
+function normalizeClientRateConfig(cfg){
+    const base = JSON.parse(JSON.stringify(DEFAULT_CLIENT_RATE_CONFIG));
+    if(!cfg || typeof cfg!=="object") return base;
+    ["A","B","C","D"].forEach(z=>{
+        if(Array.isArray(cfg[z]) && cfg[z].length===9){
+            const vals=cfg[z].map(Number);
+            if(vals.every(v=>Number.isFinite(v)&&v>=0)) base[z]=vals;
+        }
+    });
+    ["extraAB","extraCD","cod"].forEach(k=>{
+        const v=Number(cfg[k]);
+        if(Number.isFinite(v)&&v>=0) base[k]=v;
+    });
+    return base;
+}
+
+function clientRateConfigFromInputs(){
+    const lists={};
+    for(const z of ["A","B","C","D"]){
+        const vals=String($("clientRate"+z)?.value||"").split(",").map(x=>Number(String(x).trim()));
+        if(vals.length!==9 || vals.some(v=>!Number.isFinite(v)||v<0)) return null;
+        lists[z]=vals;
+    }
+    const extraAB=Number($("clientExtraA")?.value);
+    const extraB=Number($("clientExtraB")?.value);
+    const extraC=Number($("clientExtraC")?.value);
+    const extraD=Number($("clientExtraD")?.value);
+    const cod=Number($("clientRateCod")?.value);
+    if([extraAB,extraB,extraC,extraD,cod].some(v=>!Number.isFinite(v)||v<0)) return null;
+    // Step-2 secure trigger uses extraAB for A/B and extraCD for C/D.
+    if(extraAB!==extraB || extraC!==extraD){
+        return {invalidExtraSplit:true};
+    }
+    return {A:lists.A,B:lists.B,C:lists.C,D:lists.D,extraAB,extraCD:extraC,cod};
+}
+
+function fillClientRateInputs(cfg){
+    const c=normalizeClientRateConfig(cfg);
+    $("clientRateA").value=c.A.join(",");
+    $("clientRateB").value=c.B.join(",");
+    $("clientRateC").value=c.C.join(",");
+    $("clientRateD").value=c.D.join(",");
+    $("clientExtraA").value=c.extraAB;
+    $("clientExtraB").value=c.extraAB;
+    $("clientExtraC").value=c.extraCD;
+    $("clientExtraD").value=c.extraCD;
+    $("clientRateCod").value=c.cod;
+}
+
+function toggleClientRateEditor(){
+    const on=$("clientRateEnabled")?.value==="true";
+    $("clientRateEditor")?.classList.toggle("hidden",!on);
+}
+
+function populateClientRateClients(){
+    const sel=$("clientRateClient");
+    if(!sel) return;
+    const current=sel.value;
+    const clients=Array.isArray(adminClientData)?adminClientData:[];
+    sel.innerHTML='<option value="">Select Client</option>'+clients.map(c=>
+        `<option value="${escAttr(c.id)}">${esc(c.client_number||("Client "+c.id))} - ${esc(c.Client_name||"")}</option>`
+    ).join("");
+    if(clients.some(c=>String(c.id)===String(current))) sel.value=current;
+}
+
+async function loadClientRateSettings(showError=false){
+    const sel=$("clientRateClient");
+    if(!sel || !currentUser) return;
+    populateClientRateClients();
+    const clientId=sel.value;
+    if(!clientId){
+        $("clientRateEnabled").value="false";
+        fillClientRateInputs(DEFAULT_CLIENT_RATE_CONFIG);
+        toggleClientRateEditor();
+        if(showError) msg("clientRateMsg","Select a client first.","error");
+        return;
+    }
+    const {data,error}=await supabaseClient
+        .from("client_rate_settings")
+        .select("client_id,enabled,config,notes")
+        .eq("client_id",Number(clientId))
+        .maybeSingle();
+
+    if(error){
+        msg("clientRateMsg",error.message,"error");
+        return;
+    }
+    const row=data||null;
+    $("clientRateEnabled").value=row?.enabled ? "true" : "false";
+    fillClientRateInputs(row?.config||DEFAULT_CLIENT_RATE_CONFIG);
+    toggleClientRateEditor();
+    if(showError) msg("clientRateMsg",row?.enabled ? "Custom rates loaded for this client." : "Normal global rates are active for this client.","ok");
+}
+
+async function saveClientRateSettings(){
+    const clientId=Number($("clientRateClient")?.value);
+    if(!clientId){
+        msg("clientRateMsg","Please select a client.","error");
+        return;
+    }
+    const enabled=$("clientRateEnabled")?.value==="true";
+    const cfg=clientRateConfigFromInputs();
+    if(!cfg || cfg.invalidExtraSplit){
+        msg("clientRateMsg","Enter 9 valid rates for every zone. A/B extra rates must match each other, and C/D extra rates must match each other.","error");
+        return;
+    }
+    const payload={
+        client_id:clientId,
+        enabled,
+        config:cfg,
+        updated_at:new Date().toISOString()
+    };
+    const {error}=await supabaseClient
+        .from("client_rate_settings")
+        .upsert(payload,{onConflict:"client_id"});
+    if(error){
+        msg("clientRateMsg",error.message,"error");
+        return;
+    }
+    toggleClientRateEditor();
+    msg("clientRateMsg",enabled
+        ?"Custom rates saved. Only this client will use them; global rates are unchanged."
+        :"Custom rates are OFF. This client will use the normal global rates.","ok");
+}
+
 async function loadAdmin(){
     await loadAdminClients();
     await loadAdminBookings();
@@ -3123,6 +3335,7 @@ async function loadAdminClients(){
  }
  adminClientData =
  data || [];
+ populateInvoiceClients();
  const f =
  $("adminClientFilter");
  const old =
@@ -4511,7 +4724,7 @@ function showAdminPage(page){
     document.querySelectorAll('#adminArea .admin-page').forEach(x=>x.classList.remove('active'));
     const map={
       dashboard:'adminDashboardHome',clients:'adminClientsCard',shipments:'adminShipmentsCard',
-      invoices:'adminInvoicesCard',wallet:'adminWalletCard',rates:'adminRatesCard',bank:'adminBankCard',support:'adminSupportBox'
+      invoices:'adminInvoicesCard',wallet:'adminWalletCard',rates:'adminRatesCard',clientrates:'adminClientRatesCard',bank:'adminBankCard',support:'adminSupportBox'
     };
     const todayDesk=$('adminTodayBookingsCard');
     if(todayDesk){
@@ -4526,7 +4739,9 @@ function showAdminPage(page){
         }
     }
     if(page==='wallet'){loadAdminWallets();}
+    if(page==='invoices'){populateInvoiceClients();}
     if(page==='rates'){loadRateSettings();}
+    if(page==='clientrates'){populateClientRateClients(); loadClientRateSettings();}
     if(page==='bank'){loadBusinessPaymentSettings();}
     if(page==='payments'){
         $('adminInvoicesCard')?.classList.add('active');
@@ -4756,6 +4971,8 @@ async function logout(){
     currentUser=null;
     currentProfile=null;
     currentClient=null;
+    currentClientRateConfig=null;
+    currentClientRateSource="global";
     clientOrders=[];
     adminBookingData=[];
     adminClientData=[];
