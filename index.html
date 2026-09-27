@@ -838,13 +838,13 @@ header{background:linear-gradient(135deg,#171b24 0%,#242936 100%);border:1px sol
   <button class="primary" type="button" onclick="startWalletRecharge()">💳 ADD MONEY WITH CASHFREE</button>
   <div id="walletRechargeMsg" class="small" style="margin-top:8px"></div>
  </div>
- <h3>Wallet Transactions</h3><div id="clientWalletTransactions">Loading...</div>
+ <div class="card" style="margin-top:12px;border:1px solid #e5e7eb"><h3>Withdraw Wallet Money</h3><div id="withdrawEligibilityMsg" class="small">Loading...</div><div class="grid"><div><label>Amount ₹</label><input id="withdrawAmount" type="number" min="1" step="0.01"></div><div><label>Method</label><select id="withdrawMethod"><option>UPI</option><option>Bank</option></select></div><div><label>UPI / Bank Details</label><input id="withdrawDestination"></div></div><button class="secondary" type="button" onclick="requestWalletWithdrawal()">REQUEST WITHDRAWAL</button><div id="withdrawMsg" class="small"></div><div id="clientWithdrawalHistory"></div></div><h3>Wallet Transactions</h3><div id="clientWalletTransactions">Loading...</div>
  <h3>Outstanding Charges</h3><div id="clientOutstandingTransactions">Loading...</div>
 </div>
 <!-- CLIENT INVOICE HISTORY -->
 <div id="clientInvoiceBox" class="card hidden">
  <h2>Invoice History</h2>
- <div class="notice">Service invoices are shown here for your records. Service charges are handled through the Wallet. COD Payable remains separate. No GST Charged.</div>
+ <div class="notice">Service invoices are shown here for your records. Service charges are handled through the Wallet. COD Payable remains separate. GST is controlled by Admin settings for new invoices.</div>
  <div id="clientInvoiceHistory">Loading...</div>
 </div>
 </section>
@@ -1009,7 +1009,7 @@ header{background:linear-gradient(135deg,#171b24 0%,#242936 100%);border:1px sol
 <div class="card admin-page" id="adminWalletCard">
  <div class="topbar"><div><h2>Client Wallets</h2><div class="small">Admin view — Wallet Balance, COD Payable and Outstanding.</div></div><button class="secondary" type="button" onclick="loadAdminWallets()">REFRESH</button></div>
  <div id="adminWalletMsg"></div>
- <div id="adminWalletHistory">Loading...</div>
+ <div id="adminWalletHistory">Loading...</div><h3>Withdrawal Requests</h3><div id="adminWithdrawalHistory">Loading...</div>
 </div>
 <!-- BUSINESS PAYMENT SETTINGS -->
 <div class="card admin-page" id="adminBankCard">
@@ -1022,6 +1022,9 @@ header{background:linear-gradient(135deg,#171b24 0%,#242936 100%);border:1px sol
   <div><label>Account Type</label><select id="payAccountType"><option value="Savings">Savings</option><option value="Current">Current</option></select></div>
   <div><label>IFSC</label><input id="payIfsc"></div>
   <div><label>UPI ID</label><input id="payUpi"></div>
+  <div><label>GST</label><select id="payGstEnabled"><option value="false">OFF — No GST Charged</option><option value="true">ON — Apply GST to New Invoices</option></select></div>
+  <div><label>GST Rate %</label><input id="payGstRate" type="number" min="0" max="100" step="0.01" value="18"></div>
+  <div><label>GSTIN (optional)</label><input id="payGstin" placeholder="GSTIN"></div>
   <div>
    <label>UPI QR Code</label>
    <input id="payQrUrl" placeholder="Optional: paste QR image URL">
@@ -2107,18 +2110,48 @@ Math.max(
     aw/1000,
     vol
 );
-const shipping =
+let shipping =
 Number(
     $("shippingCharge").textContent
 );
-const cod =
+let cod =
 Number(
     $("codCharge").textContent
 );
-const total =
+let total =
 Number(
     $("totalCharge").textContent
 );
+
+// Preview only. The Supabase trigger is the final authority.
+let firstBookingEligible = false;
+try{
+    const {data:offerClient}=await supabaseClient
+        .from("clients")
+        .select("first_booking_used")
+        .eq("id",bookingClientId)
+        .maybeSingle();
+    const {data:offerWallet}=await supabaseClient
+        .from("client_wallets")
+        .select("wallet_balance")
+        .eq("client_id",bookingClientId)
+        .maybeSingle();
+    firstBookingEligible = !offerClient?.first_booking_used
+        && Number(offerWallet?.wallet_balance||0) >= 100
+        && charge > 0
+        && charge <= 1.0;
+}catch(e){
+    firstBookingEligible = false;
+}
+if(firstBookingEligible){
+    shipping = 0;
+    cod = 0;
+    total = 0;
+    $("shippingCharge").textContent = "0";
+    $("codCharge").textContent = "0";
+    $("totalCharge").textContent = "0";
+    $("rtoCharge").textContent = "0";
+}
 /*
     INDIA LOCAL DATE
 */
@@ -2198,6 +2231,8 @@ Number(
     total,
     rto_charge:
     shipping,
+    first_booking_free:
+    firstBookingEligible,
     status:
     "Booked",
     cancellation_requested:
@@ -2231,7 +2266,9 @@ if(error){
     orderIdInput.value = orderId;
     msg(
         "bookingMsg",
-        `Booking successful! Order ID: ${orderId}`,
+        firstBookingEligible
+            ? `🎁 First Booking FREE! Order ID: ${orderId} — ₹100 minimum wallet deposit verified. Wallet balance unchanged.`
+            : `Booking successful! Order ID: ${orderId}`,
         "ok"
     );
     const bookingSuccess=$("bookingMsg")?.querySelector(".notice");
@@ -3021,13 +3058,13 @@ async function autoGenerateWeeklyDraftInvoices(){
      const all=rows||[];
      if(!all.length)continue;
      const charges=calculateInvoiceCharges(all);
-     const shipping=charges.shipping,cod=charges.cod,rto=charges.rto,other=charges.other,total=charges.total;
+     const shipping=charges.shipping,cod=charges.cod,rto=charges.rto,other=charges.other,subtotal=charges.total,tax=await getBusinessTaxSettings(),taxed=invoiceWithGst(subtotal,tax),total=taxed.total;
      const delivered=all.filter(o=>o.status==="Delivered").length;
      const rtoCount=all.filter(o=>o.status==="RTO").length;
      const cancelled=all.filter(o=>o.status==="Cancelled").length;
      const invoiceNo=`BF-INV-${start.replaceAll("-","")}-${end.replaceAll("-","")}-C${String(Number(c.id)).padStart(3,"0")}`;
      const dueDate=addDaysISO(end,2);
-     const payload={client_id:Number(c.id),invoice_no:invoiceNo,period_start:start,period_end:end,due_date:dueDate,total_orders:all.length,delivered_count:delivered,rto_count:rtoCount,cancelled_count:cancelled,shipping_charges:shipping,cod_charges:cod,rto_charges:rto,other_charges:other,total_amount:total,payment_status:"Pending",approval_status:"Draft"};
+     const payload={client_id:Number(c.id),invoice_no:invoiceNo,period_start:start,period_end:end,due_date:dueDate,total_orders:all.length,delivered_count:delivered,rto_count:rtoCount,cancelled_count:cancelled,shipping_charges:shipping,cod_charges:cod,rto_charges:rto,other_charges:other,subtotal_amount:subtotal,gst_enabled:tax.enabled,gst_rate:tax.rate,gst_amount:taxed.gst,total_amount:total,payment_status:"Pending",approval_status:"Draft"};
      const{error:ie}=await supabaseClient.from("client_invoices").upsert(payload,{onConflict:"invoice_no"});
      if(ie)console.warn("Weekly draft invoice failed",invoiceNo,ie.message);
    }catch(e){console.warn("Weekly draft invoice error",c.id,e);}
@@ -4352,7 +4389,11 @@ async function loadBusinessPaymentSettings(){
         $("payAccountName").value=data.account_name||"";
         $("payBankName").value=data.bank_name||"";
         $("payAccountNumber").value=data.account_number||"";
+        $("payAccountType").value=data.account_type||"Savings";
         $("payIfsc").value=data.ifsc||"";
+        $("payGstEnabled").value=String(!!data.gst_enabled);
+        $("payGstRate").value=Number(data.gst_rate??18);
+        $("payGstin").value=data.gstin||"";
         $("payUpi").value=data.upi_id||"";
         $("payQrUrl").value=data.qr_url||"";
     }
@@ -4361,13 +4402,17 @@ async function loadBusinessPaymentSettings(){
 }
 async function saveBusinessPaymentSettings(){
     if(currentProfile?.role!=="admin") return;
-    const payload={id:1,account_name:$("payAccountName").value.trim(),bank_name:$("payBankName").value.trim(),account_number:$("payAccountNumber").value.trim(),ifsc:$("payIfsc").value.trim(),upi_id:$("payUpi").value.trim(),qr_url:$("payQrUrl").value.trim(),updated_at:new Date().toISOString()};
+    const gstEnabled=$("payGstEnabled").value==="true";const gstRate=Math.max(0,Math.min(100,Number($("payGstRate").value||18)));const payload={id:1,account_name:$("payAccountName").value.trim(),bank_name:$("payBankName").value.trim(),account_number:$("payAccountNumber").value.trim(),account_type:$("payAccountType").value||"Savings",ifsc:$("payIfsc").value.trim(),upi_id:$("payUpi").value.trim(),qr_url:$("payQrUrl").value.trim(),gst_enabled:gstEnabled,gst_rate:gstRate,gstin:$("payGstin").value.trim()||null,updated_at:new Date().toISOString()};
     const {error}=await supabaseClient.from("business_payment_settings").upsert(payload,{onConflict:"id"});
     if(error) return msg("paySettingsMsg",error.message,"error");
     msg("paySettingsMsg","Payment details saved successfully.","ok");
     await loadBusinessPaymentSettings();
 }
 
+async function loadClientWithdrawals(cid){const box=$("clientWithdrawalHistory");if(!box)return;const{data,error}=await supabaseClient.from("wallet_withdrawal_requests").select("*").eq("client_id",Number(cid)).order("created_at",{ascending:false}).limit(20);if(error){box.innerHTML=`<div class="notice error">${esc(error.message)}</div>`;return;}box.innerHTML=(data||[]).map(x=>`<div class="notice">${esc(formatDateIndia(String(x.created_at||"").slice(0,10)))} · ₹${Number(x.amount||0).toFixed(2)} · ${esc(x.status||"Pending")} · ${esc(x.admin_reference||"")}</div>`).join("")||'<div class="notice">No withdrawal requests yet.</div>';}
+async function requestWalletWithdrawal(){const amount=Number($("withdrawAmount")?.value||0),method=$("withdrawMethod")?.value||"UPI",destination=$("withdrawDestination")?.value.trim()||"";if(amount<=0)return msg("withdrawMsg","Enter a valid amount.","error");if(!destination)return msg("withdrawMsg","Enter UPI or bank details.","error");const{data,error}=await supabaseClient.rpc("request_wallet_withdrawal",{p_amount:amount,p_method:method,p_destination:destination});if(error)return msg("withdrawMsg",error.message,"error");msg("withdrawMsg",data?.message||"Withdrawal request submitted.","ok");$("withdrawAmount").value="";$("withdrawDestination").value="";await loadClientWallet();}
+async function loadAdminWithdrawals(){if(currentProfile?.role!=="admin")return;const box=$("adminWithdrawalHistory");if(!box)return;const{data,error}=await supabaseClient.from("wallet_withdrawal_requests").select("*").order("created_at",{ascending:false}).limit(100);if(error){box.innerHTML=`<div class="notice error">${esc(error.message)}</div>`;return;}box.innerHTML=(data||[]).map(x=>`<div class="notice"><b>Client ${Number(x.client_id)}</b> · ₹${Number(x.amount||0).toFixed(2)} · ${esc(x.status||"Pending")} · ${esc(x.method||"")} · ${esc(x.destination||"")} ${x.status==="Pending"?`<button class="success" onclick="processWalletWithdrawal(${Number(x.id)},'Paid')">MARK PAID</button> <button class="secondary" onclick="processWalletWithdrawal(${Number(x.id)},'Rejected')">REJECT</button>`:esc(x.admin_reference||"")}</div>`).join("")||'<div class="notice">No withdrawal requests.</div>';}
+async function processWalletWithdrawal(id,decision){if(currentProfile?.role!=="admin")return;const ref=prompt(decision==='Paid'?"Payout UTR/reference:":"Rejection reason:","");if(ref===null)return;const{data,error}=await supabaseClient.rpc("admin_process_wallet_withdrawal",{p_request_id:Number(id),p_decision:decision,p_reference:ref.trim()});if(error)return alert(error.message);alert(data?.message||"Updated");await loadAdminWithdrawals();await loadAdminWallets();}
 /* =========================================================
    WALLET SYSTEM
 ========================================================= */
@@ -4386,7 +4431,7 @@ async function loadClientWallet(){
         return msg("clientWalletMsg","Wallet loading error: "+walletRes.error.message,"error");
     }
     const w=walletRes.data||{wallet_balance:0,cod_payable:0,outstanding:0,low_balance_limit:100};
-    const balance=Number(w.wallet_balance||0), codPayable=Number(w.cod_payable||0), outstanding=Number(w.outstanding||0), low=Number(w.low_balance_limit??100);
+    const balance=Number(w.wallet_balance||0), codPayable=Number(w.cod_payable||0), outstanding=Number(w.outstanding||0), low=Number(w.low_balance_limit??100);const{data:elig}=await supabaseClient.from("clients").select("first_booking_used,paid_booking_spend").eq("id",cid).maybeSingle();const paidSpend=Number(elig?.paid_booking_spend||0),freeUsed=!!elig?.first_booking_used,canWithdraw=!freeUsed||paidSpend>=100;if($("withdrawEligibilityMsg"))$("withdrawEligibilityMsg").textContent=canWithdraw?"Withdrawal available.":`Withdrawal locked. Complete ₹${Math.max(0,100-paidSpend).toFixed(2)} more paid shipment charges.`;
     if(summary) summary.innerHTML=`<div class="ratebox"><b>Wallet Balance</b><div class="money">₹${balance.toFixed(2)}</div>${balance<=low?'<div class="small">Low balance — recharge before booking.</div>':''}</div><div class="ratebox"><b>COD Payable</b><div class="money">₹${codPayable.toFixed(2)}</div><div class="small">Collected on your behalf</div></div><div class="ratebox"><b>Outstanding</b><div class="money">₹${outstanding.toFixed(2)}</div><div class="small">Due to Bhagwati Fulfil</div></div>`;
     if(txRes.error){
         if(txBox) txBox.innerHTML=`<div class="notice error">${esc(txRes.error.message)}</div>`;
@@ -4400,6 +4445,7 @@ async function loadClientWallet(){
         const rows=outRes.data||[];
         outBox.innerHTML=rows.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Charge</th><th>Amount</th><th>Paid</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(formatDateIndia(String(x.created_at||'').slice(0,10)))}</td><td>${esc(x.charge_type||'—')}</td><td>₹${Number(x.amount||0).toFixed(2)}</td><td>₹${Number(x.paid_amount||0).toFixed(2)}</td><td>${esc(x.status||'Pending')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="notice">No outstanding charges.</div>';
     }
+    await loadClientWithdrawals(cid);
     const notice=$("clientWalletMsg");
     if(notice) notice.innerHTML='';
 }
@@ -4413,7 +4459,7 @@ async function loadAdminWallets(){
     const wallets=data||[];
     if(!wallets.length){ if(box) box.innerHTML='<div class="notice">No client wallets found.</div>'; return; }
     const clients=adminClientData||[];
-    if(box) box.innerHTML=`<div class="table-wrap"><table class="data-table"><thead><tr><th>Client</th><th>Wallet Balance</th><th>COD Payable</th><th>Outstanding</th><th>Low Limit</th></tr></thead><tbody>${wallets.map(w=>{const c=clients.find(x=>Number(x.id)===Number(w.client_id));const name=c?.Client_name||('Client '+w.client_id);const no=c?.client_number||'';return `<tr><td><b>${esc(name)}</b><br><span class="small">${esc(no)}</span></td><td>₹${Number(w.wallet_balance||0).toFixed(2)}</td><td>₹${Number(w.cod_payable||0).toFixed(2)}</td><td>₹${Number(w.outstanding||0).toFixed(2)}</td><td>₹${Number(w.low_balance_limit??100).toFixed(2)}</td></tr>`}).join('')}</tbody></table></div>`;
+    if(box) box.innerHTML=`<div class="table-wrap"><table class="data-table"><thead><tr><th>Client</th><th>Wallet Balance</th><th>COD Payable</th><th>Outstanding</th><th>Low Limit</th></tr></thead><tbody>${wallets.map(w=>{const c=clients.find(x=>Number(x.id)===Number(w.client_id));const name=c?.Client_name||('Client '+w.client_id);const no=c?.client_number||'';return `<tr><td><b>${esc(name)}</b><br><span class="small">${esc(no)}</span></td><td>₹${Number(w.wallet_balance||0).toFixed(2)}</td><td>₹${Number(w.cod_payable||0).toFixed(2)}</td><td>₹${Number(w.outstanding||0).toFixed(2)}</td><td>₹${Number(w.low_balance_limit??100).toFixed(2)}</td></tr>`}).join('')}</tbody></table></div>`;await loadAdminWithdrawals();
 }
 
 function showClientPage(page){
@@ -4618,6 +4664,8 @@ function stopAdminAutoRefresh(){
     }
 }
 
+async function getBusinessTaxSettings(){const{data}=await supabaseClient.from("business_payment_settings").select("gst_enabled,gst_rate,gstin").eq("id",1).maybeSingle();return{enabled:!!data?.gst_enabled,rate:Number(data?.gst_rate||0),gstin:data?.gstin||""};}
+function invoiceWithGst(base,tax){const subtotal=Number(base||0);const gst=tax.enabled?Number((subtotal*tax.rate/100).toFixed(2)):0;return{gst,total:Number((subtotal+gst).toFixed(2))};}
 /* =========================================================
    CLIENT INVOICES
 ========================================================= */
@@ -4628,8 +4676,8 @@ async function generateClientInvoice(){
  if(start>end)return msg("invoiceMsg","Invoice start date cannot be after end date.","error");
  const{data:rows,error}=await supabaseClient.from("bookings").select("*").eq("client_id",cid).gte("order_date",start).lte("order_date",end).order("order_date",{ascending:true});
  if(error)return msg("invoiceMsg",error.message,"error");
- const all=rows||[],charges=calculateInvoiceCharges(rows),shipping=charges.shipping,cod=charges.cod,rto=charges.rto,other=charges.other,total=charges.total,delivered=all.filter(o=>o.status==="Delivered").length,rtoCount=all.filter(o=>o.status==="RTO").length,cancelled=all.filter(o=>o.status==="Cancelled").length,invoiceNo=`BF-INV-${start.replaceAll('-','')}-${end.replaceAll('-','')}-C${String(cid).padStart(3,'0')}`,dueDate=addDaysISO(end,2);
- const payload={client_id:cid,invoice_no:invoiceNo,period_start:start,period_end:end,due_date:dueDate,total_orders:all.length,delivered_count:delivered,rto_count:rtoCount,cancelled_count:cancelled,shipping_charges:shipping,cod_charges:cod,rto_charges:rto,other_charges:other,total_amount:total,payment_status:"Pending",approval_status:"Draft"};
+ const all=rows||[],charges=calculateInvoiceCharges(rows),shipping=charges.shipping,cod=charges.cod,rto=charges.rto,other=charges.other,subtotal=charges.total,tax=await getBusinessTaxSettings(),taxed=invoiceWithGst(subtotal,tax),total=taxed.total,delivered=all.filter(o=>o.status==="Delivered").length,rtoCount=all.filter(o=>o.status==="RTO").length,cancelled=all.filter(o=>o.status==="Cancelled").length,invoiceNo=`BF-INV-${start.replaceAll('-','')}-${end.replaceAll('-','')}-C${String(cid).padStart(3,'0')}`,dueDate=addDaysISO(end,2);
+ const payload={client_id:cid,invoice_no:invoiceNo,period_start:start,period_end:end,due_date:dueDate,total_orders:all.length,delivered_count:delivered,rto_count:rtoCount,cancelled_count:cancelled,shipping_charges:shipping,cod_charges:cod,rto_charges:rto,other_charges:other,subtotal_amount:subtotal,gst_enabled:tax.enabled,gst_rate:tax.rate,gst_amount:taxed.gst,total_amount:total,payment_status:"Pending",approval_status:"Draft"};
  const{data,error:ie}=await supabaseClient.from("client_invoices").upsert(payload,{onConflict:"invoice_no"}).select().single();
  if(ie)return msg("invoiceMsg",ie.message,"error");
  msg("invoiceMsg",`Draft ${invoiceNo} created. Client cannot see it until Admin verifies & sends it.` ,"ok");
@@ -4642,8 +4690,9 @@ async function recalculateDraftInvoice(id){
  const{data:rows,error}=await supabaseClient.from("bookings").select("*").eq("client_id",Number(x.client_id)).gte("order_date",x.period_start).lte("order_date",x.period_end);
  if(error)return alert(error.message);
  const c=calculateInvoiceCharges(rows||[]);
+ const tax=await getBusinessTaxSettings(),taxed=invoiceWithGst(c.total,tax);
  const delivered=(rows||[]).filter(o=>o.status==='Delivered').length,rto=(rows||[]).filter(o=>o.status==='RTO').length,cancelled=(rows||[]).filter(o=>o.status==='Cancelled').length;
- const{error:ue}=await supabaseClient.from("client_invoices").update({total_orders:(rows||[]).length,delivered_count:delivered,rto_count:rto,cancelled_count:cancelled,shipping_charges:c.shipping,cod_charges:c.cod,rto_charges:c.rto,other_charges:c.other,total_amount:c.total}).eq("id",Number(id)).eq("approval_status","Draft");
+ const{error:ue}=await supabaseClient.from("client_invoices").update({total_orders:(rows||[]).length,delivered_count:delivered,rto_count:rto,cancelled_count:cancelled,shipping_charges:c.shipping,cod_charges:c.cod,rto_charges:c.rto,other_charges:c.other,subtotal_amount:c.total,gst_enabled:tax.enabled,gst_rate:tax.rate,gst_amount:taxed.gst,total_amount:taxed.total}).eq("id",Number(id)).eq("approval_status","Draft");
  if(ue)return alert(ue.message);
  await loadAdminInvoices();
  msg("invoiceMsg","Draft invoice recalculated from current shipment statuses.","ok");
@@ -4669,8 +4718,8 @@ async function saveInvoiceDraft(id){
  if(currentProfile?.role!=="admin")return;
  const ship=Number($(`editShip${id}`)?.value||0),cod=Number($(`editCod${id}`)?.value||0),rto=Number($(`editRto${id}`)?.value||0),other=Number($(`editOther${id}`)?.value||0);
  if([ship,cod,rto,other].some(v=>v<0))return alert("Charges cannot be negative.");
- const total=ship+cod+rto+other;
- const{error}=await supabaseClient.from("client_invoices").update({shipping_charges:ship,cod_charges:cod,rto_charges:rto,other_charges:other,total_amount:total}).eq("id",id).eq("approval_status","Draft");
+ const subtotal=ship+cod+rto+other;const tax=await getBusinessTaxSettings(),taxed=invoiceWithGst(subtotal,tax);
+ const{error}=await supabaseClient.from("client_invoices").update({shipping_charges:ship,cod_charges:cod,rto_charges:rto,other_charges:other,subtotal_amount:subtotal,gst_enabled:tax.enabled,gst_rate:tax.rate,gst_amount:taxed.gst,total_amount:taxed.total}).eq("id",id).eq("approval_status","Draft");
  if(error)return alert(error.message);await loadAdminInvoices();
 }
 async function verifyAndSendInvoice(id){
