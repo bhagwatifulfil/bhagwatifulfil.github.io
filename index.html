@@ -858,7 +858,7 @@ header{background:linear-gradient(135deg,#171b24 0%,#242936 100%);border:1px sol
   <div class="header-actions"><button class="secondary mini-btn" type="button" onclick="refreshAdminDashboard()">↻</button><button class="menu-btn" type="button" aria-label="Open menu" onclick="toggleAppMenu('adminMenu')">⋮</button></div>
  </div>
  <div id="adminMenu" class="app-menu hidden">
-  <button type="button" onclick="showAdminPage('dashboard')">Dashboard</button><button type="button" onclick="showAdminPage('clients')">Clients</button><button type="button" onclick="showAdminPage('shipments')">All Shipments</button><button type="button" onclick="showAdminPage('invoices')">Client Invoices</button><button type="button" onclick="showAdminPage('payments')">Payment Submissions</button><button type="button" onclick="showAdminPage('wallet')">Client Wallets</button><button type="button" onclick="showAdminPage('bank')">Business Payment Details</button><button type="button" onclick="showAdminPage('support')">Support</button><button type="button" onclick="showAdminPage('settings')">Settings</button><button type="button" class="menu-danger" onclick="logout()">Logout</button>
+  <button type="button" onclick="showAdminPage('dashboard')">Dashboard</button><button type="button" onclick="showAdminPage('clients')">Clients</button><button type="button" onclick="showAdminPage('shipments')">All Shipments</button><button type="button" onclick="showAdminPage('invoices')">Client Invoices</button><button type="button" onclick="showAdminPage('payments')">Payment Submissions</button><button type="button" onclick="showAdminPage('wallet')">Client Wallets</button><button type="button" onclick="showAdminPage('rates')">Rate Settings</button><button type="button" onclick="showAdminPage('bank')">Business Payment Details</button><button type="button" onclick="showAdminPage('support')">Support</button><button type="button" onclick="showAdminPage('settings')">Settings</button><button type="button" class="menu-danger" onclick="logout()">Logout</button>
  </div>
  <div id="adminMsg"></div>
  <div id="adminDashboardHome" class="card admin-page active">
@@ -1035,6 +1035,24 @@ header{background:linear-gradient(135deg,#171b24 0%,#242936 100%);border:1px sol
  </div>
  <button class="success" type="button" onclick="saveBusinessPaymentSettings()">SAVE PAYMENT DETAILS</button>
  <div id="paySettingsMsg"></div>
+</div>
+<!-- ADMIN RATE SETTINGS -->
+<div class="card admin-page" id="adminRatesCard">
+ <div class="topbar"><div><h2>Courier Rate Settings</h2><div class="small">Change rates here. New bookings use the latest saved rates; existing bookings stay unchanged.</div></div><button class="secondary" type="button" onclick="loadRateSettings(true)">REFRESH</button></div>
+ <div id="rateSettingsMsg"></div>
+ <div class="notice"><b>Weight slabs:</b> 0–0.25kg, 0.25–0.50kg, 0.50–0.75kg, 0.75–1kg, 1–1.5kg, 1.5–2kg, 2–3kg, 3–4kg, 4–5kg. Above 5kg uses the extra/0.5kg rate.</div>
+ <div class="grid">
+  <div><label>Zone A – Same City</label><input id="rateA" placeholder="40,45,55,65,75,85,110,125,145"></div>
+  <div><label>Zone B – Same State</label><input id="rateB" placeholder="45,50,65,75,90,100,120,140,160"></div>
+  <div><label>Zone C – Other State</label><input id="rateC" placeholder="50,55,75,90,105,120,145,160,180"></div>
+  <div><label>Zone D – Special</label><input id="rateD" placeholder="55,65,85,100,120,140,160,190,190"></div>
+  <div><label>Extra / 0.5kg – A</label><input id="extraA" type="number" min="0" step="0.01"></div>
+  <div><label>Extra / 0.5kg – B</label><input id="extraB" type="number" min="0" step="0.01"></div>
+  <div><label>Extra / 0.5kg – C</label><input id="extraC" type="number" min="0" step="0.01"></div>
+  <div><label>Extra / 0.5kg – D</label><input id="extraD" type="number" min="0" step="0.01"></div>
+  <div><label>COD Handling</label><input id="rateCod" type="number" min="0" step="0.01"></div>
+ </div>
+ <button class="success" type="button" onclick="saveRateSettings()">SAVE RATE SETTINGS</button>
 </div>
 <!-- CLIENT INVOICES ADMIN -->
 <div class="card admin-page" id="adminInvoicesCard">
@@ -1572,6 +1590,7 @@ hideAuth();
 document.body.classList.remove("auth-locked");
 adminArea.classList.add("hidden");
 clientArea.classList.remove("hidden");
+await loadRateSettings(false);
 await loadClient();
 }
 /* =========================================================
@@ -1795,6 +1814,65 @@ function getBhagwatiZoneFromPincode(pickup, delivery){
     return "C";
 }
 
+const DEFAULT_RATE_CONFIG = {
+    rates:{
+        A:[40,45,55,65,75,85,110,125,145],
+        B:[45,50,65,75,90,100,120,140,160],
+        C:[50,55,75,90,105,120,145,160,180],
+        D:[55,65,85,100,120,140,160,190,190]
+    },
+    extra:{A:20,B:20,C:25,D:25},
+    cod:25
+};
+window.bhagwatiRateConfig = JSON.parse(JSON.stringify(DEFAULT_RATE_CONFIG));
+
+function parseRateList(value){
+    const arr=String(value||"").split(",").map(v=>Number(v.trim()));
+    if(arr.length!==9 || arr.some(v=>!Number.isFinite(v)||v<0)) return null;
+    return arr;
+}
+function rateConfigFromInputs(){
+    const rates={A:parseRateList($("rateA")?.value),B:parseRateList($("rateB")?.value),C:parseRateList($("rateC")?.value),D:parseRateList($("rateD")?.value)};
+    if(Object.values(rates).some(v=>!v)) return null;
+    const extra={A:Number($("extraA")?.value),B:Number($("extraB")?.value),C:Number($("extraC")?.value),D:Number($("extraD")?.value)};
+    if(Object.values(extra).some(v=>!Number.isFinite(v)||v<0)) return null;
+    const cod=Number($("rateCod")?.value);
+    if(!Number.isFinite(cod)||cod<0) return null;
+    return {rates,extra,cod};
+}
+function fillRateInputs(cfg){
+    $("rateA").value=cfg.rates.A.join(",");
+    $("rateB").value=cfg.rates.B.join(",");
+    $("rateC").value=cfg.rates.C.join(",");
+    $("rateD").value=cfg.rates.D.join(",");
+    $("extraA").value=cfg.extra.A; $("extraB").value=cfg.extra.B;
+    $("extraC").value=cfg.extra.C; $("extraD").value=cfg.extra.D;
+    $("rateCod").value=cfg.cod;
+}
+async function loadRateSettings(showError=false){
+    if(!currentUser) return;
+    const {data,error}=await supabaseClient.from("rate_settings").select("config").eq("id",1).maybeSingle();
+    if(error){
+        window.bhagwatiRateConfig=JSON.parse(JSON.stringify(DEFAULT_RATE_CONFIG));
+        if(showError && $("rateSettingsMsg")) msg("rateSettingsMsg","Rate settings table is not ready yet. Run the provided SQL once.","error");
+        fillRateInputs(window.bhagwatiRateConfig);
+        return;
+    }
+    window.bhagwatiRateConfig=data?.config || JSON.parse(JSON.stringify(DEFAULT_RATE_CONFIG));
+    fillRateInputs(window.bhagwatiRateConfig);
+    if(showError && $("rateSettingsMsg")) msg("rateSettingsMsg","Rate settings loaded.","ok");
+    calculateRate();
+}
+async function saveRateSettings(){
+    const cfg=rateConfigFromInputs();
+    if(!cfg){ msg("rateSettingsMsg","Please enter 9 valid rates for every zone and valid extra/COD rates.","error"); return; }
+    const {error}=await supabaseClient.from("rate_settings").upsert({id:1,config:cfg,updated_at:new Date().toISOString()},{onConflict:"id"});
+    if(error){ msg("rateSettingsMsg",error.message,"error"); return; }
+    window.bhagwatiRateConfig=cfg;
+    calculateRate();
+    msg("rateSettingsMsg","Rate settings saved. New bookings will use the new rates.","ok");
+}
+
 function calculateRate(){
     const l = Number(lengthInput.value)||0;
     const w = Number(widthInput.value)||0;
@@ -1820,12 +1898,9 @@ function calculateRate(){
         return;
     }
 
-    const RATE_CARD = {
-        A: [40,45,55,65,75,85,110,125,145],
-        B: [45,50,65,75,90,100,120,140,160],
-        C: [50,55,75,90,105,120,145,160,180],
-        D: [55,65,85,100,120,140,160,190,190]
-    };
+    const cfg = window.bhagwatiRateConfig || DEFAULT_RATE_CONFIG;
+    const RATE_CARD = cfg.rates;
+    const EXTRA_RATE = cfg.extra;
 
     const WEIGHT_SLABS = [0.25,0.50,0.75,1.00,1.50,2.00,3.00,4.00,5.00];
     let slabIndex = WEIGHT_SLABS.findIndex(x => charge <= x);
@@ -1834,7 +1909,7 @@ function calculateRate(){
         ship = RATE_CARD[zoneCode][slabIndex];
     }else{
         const extraHalfKg = Math.ceil((charge-5)/0.5);
-        const extraRate = zoneCode === "A" ? 20 : zoneCode === "B" ? 20 : 25;
+        const extraRate = Number(EXTRA_RATE[zoneCode] ?? 25);
         ship = RATE_CARD[zoneCode][8] + (extraHalfKg * extraRate);
     }
 
@@ -1844,7 +1919,7 @@ function calculateRate(){
         C: "Part 3 – Other State / Metro + Rest India",
         D: "Part 4 – NE / J&K / Andaman"
     };
-    const cod = paymentType.value === "COD" ? 25 : 0;
+    const cod = paymentType.value === "COD" ? Number(cfg.cod || 0) : 0;
 
     $("volumetricWeight").textContent = vol.toFixed(2);
     $("chargeableWeight").textContent = charge.toFixed(2);
@@ -4379,7 +4454,7 @@ function showAdminPage(page){
     document.querySelectorAll('#adminArea .admin-page').forEach(x=>x.classList.remove('active'));
     const map={
       dashboard:'adminDashboardHome',clients:'adminClientsCard',shipments:'adminShipmentsCard',
-      invoices:'adminInvoicesCard',wallet:'adminWalletCard',bank:'adminBankCard',support:'adminSupportBox'
+      invoices:'adminInvoicesCard',wallet:'adminWalletCard',rates:'adminRatesCard',bank:'adminBankCard',support:'adminSupportBox'
     };
     const todayDesk=$('adminTodayBookingsCard');
     if(todayDesk){
@@ -4394,6 +4469,7 @@ function showAdminPage(page){
         }
     }
     if(page==='wallet'){loadAdminWallets();}
+    if(page==='rates'){loadRateSettings();}
     if(page==='bank'){loadBusinessPaymentSettings();}
     if(page==='payments'){
         $('adminInvoicesCard')?.classList.add('active');
