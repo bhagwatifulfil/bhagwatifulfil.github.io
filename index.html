@@ -3085,6 +3085,17 @@ async function loadAdmin(){
 /* =========================================================
     ADMIN CLIENTS
 ========================================================= */
+function populateInvoiceClients(){
+    const sel = $("invoiceClient");
+    if(!sel) return;
+    const current = sel.value;
+    const clients = Array.isArray(adminClientData) ? adminClientData : [];
+    sel.innerHTML = '<option value="">Select Client</option>' + clients.map(c =>
+        `<option value="${escAttr(c.id)}">${esc(c.client_number || ("Client " + c.id))} - ${esc(c.Client_name || "")}</option>`
+    ).join("");
+    if(clients.some(c => String(c.id) === String(current))) sel.value = current;
+}
+
 async function loadAdminClients(){
     const {
         data,
