@@ -2720,6 +2720,12 @@ Object.keys(groups)
 /* =========================================================
     CLIENT CARD
 ========================================================= */
+function clientStatusLabel(status){
+    const s=String(status||"Booked").trim();
+    if(s==="Genz Booking Pending" || s==="Genz Booked") return "Processing";
+    return s;
+}
+
 function clientCard(o){
     const dailyNo =
     Number(
@@ -2850,7 +2856,7 @@ return `
  </p>
  <p>
   <b>Status:</b>
-  ${esc(o.status||"Booked")}
+  ${esc(clientStatusLabel(o.status))}
  </p>
 </div>
 <div class="detail-box">
@@ -2937,14 +2943,14 @@ return `
  </div>
 ${(()=>{const wa=weightAdjustmentsByBooking[o.id]; if(!wa) return ""; const adj=Number(wa.adjustment_amount||0); return `
 <div class="detail-box">
- <h4>⚖️ Weight Verification</h4>
+ <h4>⚖️ Weight Verification Details</h4>
  <p><b>Declared Weight:</b> ${Number(wa.declared_actual_weight_g||0)} g</p>
  <p><b>Verified Weight:</b> ${Number(wa.verified_actual_weight_g||0)} g</p>
- <p><b>Chargeable Weight:</b> ${Number(wa.final_chargeable_weight_kg||wa.verified_chargeable_weight_kg||0)} kg</p>
- <p><b>Adjustment:</b> ${adj>0?"Additional Charge ":adj<0?"Credit ":"No Change "}₹${Math.abs(adj).toFixed(2)}</p>
+ <p><b>Final Chargeable Weight:</b> ${Number(wa.final_chargeable_weight_kg||wa.verified_chargeable_weight_kg||0)} kg</p>
+ <p><b>Charge Adjustment:</b> ${adj>0?"Additional Charge ":adj<0?"Credit ":"No Change "}₹${Math.abs(adj).toFixed(2)}</p>
  <p><b>Status:</b> ${esc(wa.status||"Applied")}</p>
  ${wa.proof_path?`<button class="info" type="button" onclick="downloadWeightProof(${o.id})">VIEW WEIGHT PROOF</button>`:""}
- ${wa.reason?`<p class="small"><b>Note:</b> ${esc(wa.reason)}</p>`:""}
+ <p class="small">The verified weight and any applicable charge adjustment are shown here for your records.</p>
 </div>`;})()}
 </div>
 <div class="admin-actions">
@@ -4008,14 +4014,14 @@ return `
 <div class="uploadbox" style="margin-top:12px;border-color:#f59e0b">
  <h4 style="margin:0 0 8px">⚖️ Weight Verification / Proof</h4>
  <div class="grid">
-  <div><label>Declared Weight</label><input value="${Number(o.actual_weight_g||0)} g" disabled></div>
-  <div><label>Verified Genz Weight (grams)</label><input id="verifiedWeight-${o.id}" type="number" min="1" step="1" value="${escAttr(o.verified_actual_weight_g||"")}" placeholder="e.g. 500"></div>
+  <div><label>Declared Weight (grams)</label><input id="declaredWeight-${o.id}" type="number" min="1" step="1" value="${Number(o.actual_weight_g||0)}" placeholder="e.g. 250"></div>
+  <div><label>Verified Weight (grams)</label><input id="verifiedWeight-${o.id}" type="number" min="1" step="1" value="${escAttr(o.verified_actual_weight_g||"")}" placeholder="e.g. 500"></div>
  </div>
  <label>Proof Photo / PDF</label>
  <input id="weightProof-${o.id}" type="file" accept="image/jpeg,image/png,application/pdf">
- <div class="small">Upload Genz/courier weight proof. JPG, PNG or PDF. Maximum 50 MB.</div>
+ <div class="small">Upload courier weight proof. JPG, PNG or PDF. Maximum 50 MB.</div>
  <label>Reason / Note</label>
- <input id="weightReason-${o.id}" placeholder="e.g. Genz verified 500g instead of declared 250g" value="${escAttr(weightAdjustmentsByBooking[o.id]?.reason||"")}">
+ <input id="weightReason-${o.id}" placeholder="e.g. Courier verified 500g instead of declared 250g" value="${escAttr(weightAdjustmentsByBooking[o.id]?.reason||"")}">
  ${o.weight_adjustment_status==='Applied'?`<div class="notice ok" style="margin-top:8px">Weight adjustment already applied: ₹${Number(o.weight_adjustment_amount||0).toFixed(2)}</div>`:`<button type="button" class="secondary" onclick="applyWeightAdjustmentFromAdmin(${o.id})">UPLOAD PROOF & APPLY WEIGHT ADJUSTMENT</button>`}
  <div id="weightAdjMsg-${o.id}" class="small"></div>
 </div>
@@ -4255,14 +4261,19 @@ async function uploadWeightProof(id,file){
 async function applyWeightAdjustmentFromAdmin(id){
     const o=adminBookingData.find(x=>Number(x.id)===Number(id));
     if(!o) return;
+    const declared=Number($(`declaredWeight-${id}`)?.value||0);
     const verified=Number($(`verifiedWeight-${id}`)?.value||0);
     const file=$(`weightProof-${id}`)?.files?.[0]||null;
     const reason=$(`weightReason-${id}`)?.value?.trim()||"";
     const out=$(`weightAdjMsg-${id}`);
-    if(!verified){if(out)out.textContent="Enter verified Genz weight.";return;}
+    if(!declared){if(out)out.textContent="Enter declared weight.";return;}
+    if(!verified){if(out)out.textContent="Enter verified weight.";return;}
     if(!file){if(out)out.textContent="Upload weight proof first.";return;}
     try{
-      if(out)out.textContent="Uploading proof and applying adjustment...";
+      if(out)out.textContent="Saving weight and applying adjustment...";
+      const {error:declaredError}=await supabaseClient.from("bookings").update({actual_weight_g:Math.round(declared)}).eq("id",id);
+      if(declaredError) throw declaredError;
+      o.actual_weight_g=Math.round(declared);
       const path=await uploadWeightProof(id,file);
       const {data,error}=await supabaseClient.rpc("apply_weight_adjustment",{
         p_booking_id:Number(id),p_verified_actual_weight_g:verified,p_proof_path:path,
@@ -4296,6 +4307,7 @@ async function updateBooking(id){
     const statusEl=$(`status-${id}`);
     const trackingEl=$(`tracking-${id}`);
     const trackingLinkEl=$(`trackingLink-${id}`);
+    const declaredWeightEl=$(`declaredWeight-${id}`);
     const fileEl=$(`labelFile-${id}`);
     if(!statusEl){msg("adminMsg","Status field not found.","error");return;}
     const status=statusEl.value;
@@ -4309,7 +4321,9 @@ async function updateBooking(id){
       let finalStatus=status;
       let cancellationRequested=!!o.cancellation_requested;
       if(status==="Cancellation Requested"){cancellationRequested=true;finalStatus="Cancellation Requested";}
-      const updates={status:finalStatus,cancellation_requested:cancellationRequested,tracking_number:trackingEl?.value?.trim()||"",tracking_link:trackingLinkEl?.value?.trim()||"",label_file_path:labelPath,delivered_at:finalStatus==="Delivered"?(o.delivered_at||new Date().toISOString()):null};
+      const declaredWeight=Number(declaredWeightEl?.value||0);
+      if(!Number.isFinite(declaredWeight) || declaredWeight<=0){throw new Error("Enter a valid declared weight in grams.");}
+      const updates={status:finalStatus,cancellation_requested:cancellationRequested,tracking_number:trackingEl?.value?.trim()||"",tracking_link:trackingLinkEl?.value?.trim()||"",label_file_path:labelPath,actual_weight_g:Math.round(declaredWeight),delivered_at:finalStatus==="Delivered"?(o.delivered_at||new Date().toISOString()):null};
       if(finalStatus==="Cancelled"){updates.cancelled_at=o.cancelled_at||new Date().toISOString();updates.cancellation_requested=false;}
       const {error}=await supabaseClient.from("bookings").update(updates).eq("id",id);
       if(error) throw error;
@@ -4835,7 +4849,7 @@ function renderClientDashboard(){
     if($('clientDashboardSummary'))$('clientDashboardSummary').innerHTML=`<div class="dash-mini"><b>Today</b><strong>${todayRows.length} bookings</strong><span class="small">Delivered ${todayRows.filter(o=>o.status==='Delivered').length} · RTO ${todayRows.filter(o=>o.status==='RTO').length}</span></div><div class="dash-mini"><b>This Week</b><strong>${weekRows.length} bookings</strong><span class="small">Delivered ${weekRows.filter(o=>o.status==='Delivered').length} · RTO ${weekRows.filter(o=>o.status==='RTO').length}</span></div>`;
     if($('clientDashboardRecent')){
       const recent=[...rows].sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)).slice(0,6);
-      $('clientDashboardRecent').innerHTML=recent.length?`<table class="data-table"><thead><tr><th>Order</th><th>Status</th><th>Tracking</th><th>Date</th><th>Action</th></tr></thead><tbody>${recent.map(o=>`<tr><td><b>${esc(o.order_id||'—')}</b></td><td><span class="status-badge">${esc(o.status||'Booked')}</span></td><td>${esc(o.tracking_number||'Not added')}</td><td>${esc(formatDateIndia(getOrderDate(o)))}</td><td><button class="secondary" type="button" onclick="showClientPage('shipments')">VIEW</button></td></tr>`).join('')}</tbody></table>`:'<div class="notice">No shipments yet.</div>';
+      $('clientDashboardRecent').innerHTML=recent.length?`<table class="data-table"><thead><tr><th>Order</th><th>Status</th><th>Tracking</th><th>Date</th><th>Action</th></tr></thead><tbody>${recent.map(o=>`<tr><td><b>${esc(o.order_id||'—')}</b></td><td><span class="status-badge">${esc(clientStatusLabel(o.status))}</span></td><td>${esc(o.tracking_number||'Not added')}</td><td>${esc(formatDateIndia(getOrderDate(o)))}</td><td><button class="secondary" type="button" onclick="showClientPage('shipments')">VIEW</button></td></tr>`).join('')}</tbody></table>`:'<div class="notice">No shipments yet.</div>';
     }
 }
 function renderTodayBookingsDesk(){
