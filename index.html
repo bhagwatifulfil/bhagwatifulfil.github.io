@@ -472,6 +472,26 @@ header{background:linear-gradient(135deg,#171b24 0%,#242936 100%);border:1px sol
 .card{border:1px solid #edf0f4;}
 @media(max-width:600px){.container{width:calc(100% - 18px);margin:10px auto 22px;}header{border-radius:12px;padding:12px 13px}.header-brand-row h1{font-size:19px}.header-brand-row p{font-size:11px}.brand-logo{width:50px;height:50px}.brand-logo-lg{width:76px;height:76px}.app-header{padding:9px 10px}.app-header .brand-logo{width:46px;height:46px}.brand-lockup{gap:9px}.brand-title{font-size:17px!important}}
 </style>
+
+<style id="cashfree-legal-policy-styles">
+.bf-legal-wrap{margin:28px auto 20px;max-width:1180px;padding:0 16px 28px;color:#1f2937}
+.bf-legal-card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:22px;box-shadow:0 8px 30px rgba(0,0,0,.06)}
+.bf-legal-title{font-size:22px;font-weight:800;margin:0 0 6px}
+.bf-legal-sub{font-size:13px;color:#6b7280;margin:0 0 18px}
+.bf-legal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.bf-legal-box{border:1px solid #e5e7eb;border-radius:14px;padding:16px;background:#fafafa}
+.bf-legal-box h3{margin:0 0 9px;font-size:16px}
+.bf-legal-box p{margin:6px 0;font-size:13px;line-height:1.55}
+.bf-legal-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.bf-legal-links a{display:inline-block;padding:8px 12px;border-radius:9px;background:#111827;color:#fff!important;text-decoration:none!important;font-size:13px}
+.bf-policy-list{margin-top:14px;display:grid;gap:10px}
+.bf-policy-list details{border:1px solid #e5e7eb;border-radius:12px;padding:11px 13px;background:#fff}
+.bf-policy-list summary{cursor:pointer;font-weight:700;font-size:14px}
+.bf-policy-list .policy-body{padding:10px 2px 2px;font-size:13px;line-height:1.65;color:#374151}
+.bf-policy-list ul{margin:8px 0 0 20px;padding:0}
+.bf-legal-note{font-size:12px;color:#6b7280;margin-top:14px}
+@media(max-width:600px){.bf-legal-card{padding:16px}.bf-legal-title{font-size:19px}.bf-legal-links a{flex:1;text-align:center}}
+</style>
 </head>
 <body class="auth-locked">
 <div class="container">
@@ -5029,7 +5049,70 @@ async function verifyAndSendInvoice(id){
 
 async function verifyClientPayment(submissionId,invoiceId){if(currentProfile?.role!=="admin")return;const{data:sub,error:fe}=await supabaseClient.from("client_payment_submissions").select("*").eq("id",submissionId).single();if(fe||!sub)return alert(fe?.message||"Payment submission not found.");if(Number(sub.invoice_id)!==Number(invoiceId))return alert("Payment submission does not match this invoice.");const{error}=await supabaseClient.from("client_invoices").update({payment_status:"Paid",paid_at:new Date().toISOString(),payment_reference:sub.utr}).eq("id",invoiceId);if(error)return alert(error.message);const{error:se}=await supabaseClient.from("client_payment_submissions").update({status:"Verified",verified_at:new Date().toISOString(),verified_by:currentUser.id}).eq("id",submissionId);if(se)return alert(se.message);await loadAdminInvoices();}
 async function markInvoicePaid(id){if(currentProfile?.role!=="admin")return;const ref=prompt("Client invoice payment UTR / reference:","");if(ref===null)return;const{error}=await supabaseClient.from("client_invoices").update({payment_status:"Paid",paid_at:new Date().toISOString(),payment_reference:ref.trim()}).eq("id",id);if(error)return alert(error.message);await loadAdminInvoices();}
-function printInvoice(id){const x=adminInvoices.find(v=>Number(v.id)===Number(id));if(!x)return;const html=`<!doctype html><html><head><title>${esc(x.invoice_no)}</title><style>body{font-family:Arial;padding:30px;color:#111}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:9px;text-align:left}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly Service Invoice</h2><p><b>Invoice:</b> ${esc(x.invoice_no)}</p><p><b>Client:</b> ${esc(clientName(x.client_id))}</p><p><b>Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}</p><table><tr><th>Particular</th><th>Amount</th></tr><tr><td>Total Bookings</td><td>${Number(x.total_orders||0)}</td></tr><tr><td>Shipping Charges</td><td>${money(x.shipping_charges)}</td></tr><tr><td>COD / Handling Charges</td><td>${money(x.cod_charges)}</td></tr><tr><td>RTO Charges</td><td>${money(x.rto_charges)}</td></tr><tr><td>Other Charges</td><td>${money(x.other_charges)}</td></tr><tr><th>Total Payable</th><th>${money(x.total_amount)}</th></tr></table><p>COD payable is tracked separately in the client wallet.</p><p>No GST Charged</p><script>window.onload=()=>window.print()<\/script></body></html>`;const w=window.open("","_blank");if(w){w.document.write(html);w.document.close();}}
+function printInvoice(id){const x=adminInvoices.find(v=>Number(v.id)===Number(id));if(!x)return;const html=`<!doctype html><html><head><title>${esc(x.invoice_no)}</title><style>body{font-family:Arial;padding:30px;color:#111}table{width:100%;border-collapse:collapse}td,th{border:1px solid #ddd;padding:9px;text-align:left}</style></head><body><h1>BHAGWATI FULFIL</h1><h2>Weekly Service Invoice</h2><p><b>Invoice:</b> ${esc(x.invoice_no)}</p><p><b>Client:</b> ${esc(clientName(x.client_id))}</p><p><b>Period:</b> ${esc(formatDateIndia(x.period_start))} – ${esc(formatDateIndia(x.period_end))}</p><table><tr><th>Particular</th><th>Amount</th></tr><tr><td>Total Bookings</td><td>${Number(x.total_orders||0)}</td></tr><tr><td>Shipping Charges</td><td>${money(x.shipping_charges)}</td></tr><tr><td>COD / Handling Charges</td><td>${money(x.cod_charges)}</td></tr><tr><td>RTO Charges</td><td>${money(x.rto_charges)}</td></tr><tr><td>Other Charges</td><td>${money(x.other_charges)}</td></tr><tr><th>Total Payable</th><th>${money(x.total_amount)}</th></tr></table><p>COD payable is tracked separately in the client wallet.</p><p>No GST Charged</p><script>window.onload=()=>window.print()<\/script><!-- CASHFREE LEGAL & POLICIES -->
+
+<section id="bf-legal-policies" class="bf-legal-wrap" aria-label="Legal information and policies">
+  <div class="bf-legal-card">
+    <h2 class="bf-legal-title">BHAGWATI FULFIL — Legal &amp; Customer Information</h2>
+    <p class="bf-legal-sub">D2C PICKUP &amp; DELIVERY SERVICES</p>
+
+    <div class="bf-legal-grid">
+      <div class="bf-legal-box">
+        <h3>Legal / Business Information</h3>
+        <p><b>Legal Name:</b> Onkar Vishnu Raut</p>
+        <p><b>Email:</b> <a href="mailto:rautonkar107@gmail.com">rautonkar107@gmail.com</a></p>
+        <p><b>Phone:</b> <a href="tel:+918530402784">+91 8530402784</a></p>
+      </div>
+      <div class="bf-legal-box">
+        <h3>BHAGWATI FULFIL Support</h3>
+        <p><b>Support Email:</b> <a href="mailto:bhagwatifulfil@gmail.com">bhagwatifulfil@gmail.com</a></p>
+        <p><b>Support Phone:</b> <a href="tel:+919765616762">+91 9765616762</a></p>
+        <p>For booking, shipment, wallet and account support.</p>
+      </div>
+    </div>
+
+    <div class="bf-legal-links" aria-label="Policy links">
+      <a href="#bf-privacy-policy">Privacy Policy</a>
+      <a href="#bf-terms-policy">Terms &amp; Conditions</a>
+      <a href="#bf-refund-policy">Refund &amp; Cancellation</a>
+      <a href="#bf-shipping-policy">Shipping &amp; Delivery</a>
+    </div>
+
+    <div class="bf-policy-list">
+      <details id="bf-privacy-policy">
+        <summary>Privacy Policy</summary>
+        <div class="policy-body">
+          BHAGWATI FULFIL collects information required to create and operate client accounts, process shipment bookings, provide support, manage wallet transactions, generate shipment records and communicate service updates. Information may include name, contact details, pickup/delivery information, shipment details and payment-related references. We use this information to provide the requested services, maintain records, prevent misuse and respond to support requests. We do not sell client information. Information may be shared with service providers involved in fulfilling a shipment or processing a payment where necessary for the requested service. Clients should avoid submitting unnecessary sensitive information through the portal.
+        </div>
+      </details>
+
+      <details id="bf-terms-policy">
+        <summary>Terms &amp; Conditions</summary>
+        <div class="policy-body">
+          By using the BHAGWATI FULFIL portal, the client agrees to provide accurate account, pickup, receiver, package, weight and payment information. Shipment charges are calculated according to the applicable rate configuration and shipment details. The client is responsible for correct parcel information, packaging and receiver details. Delivery timelines and shipment outcomes can depend on the applicable delivery service and destination conditions. RTO, weight adjustments and other applicable charges may be recorded against the shipment. Wallet funds may be used for eligible service charges. BHAGWATI FULFIL may restrict or suspend access where an account is misused, information is materially inaccurate, or charges remain unpaid.
+        </div>
+      </details>
+
+      <details id="bf-refund-policy">
+        <summary>Refund &amp; Cancellation Policy</summary>
+        <div class="policy-body">
+          A shipment cancellation request can be made before the shipment is processed or dispatched, subject to the shipment's current status. Once a shipment has entered processing or movement, cancellation may not be possible and applicable charges may remain payable. Service charges already incurred for a shipment are not refundable unless BHAGWATI FULFIL determines otherwise after review. For wallet top-ups, any refund or reversal request is subject to transaction verification and the applicable payment-provider rules. Unused wallet balance is not treated as a shipment refund. Clients can contact BHAGWATI FULFIL Support for transaction-specific assistance.
+        </div>
+      </details>
+
+      <details id="bf-shipping-policy">
+        <summary>Shipping &amp; Delivery Policy</summary>
+        <div class="policy-body">
+          BHAGWATI FULFIL provides D2C pickup and delivery booking services. Delivery time depends on the destination, service availability, shipment characteristics and operational conditions. Shipment status is updated when information becomes available. A shipment may be returned to the sender (RTO) when delivery cannot be completed, including situations such as receiver non-response, refusal or other delivery exceptions. Applicable forward, RTO or weight-adjustment charges may be reflected in the client's account according to the shipment record.
+        </div>
+      </details>
+    </div>
+
+    <p class="bf-legal-note">For questions, corrections or policy-related requests, contact BHAGWATI FULFIL Support using the details above.</p>
+  </div>
+</section>
+
+</body></html>`;const w=window.open("","_blank");if(w){w.document.write(html);w.document.close();}}
 /* =========================================================
     LOGOUT
 ========================================================= */
