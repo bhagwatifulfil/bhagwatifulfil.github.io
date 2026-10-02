@@ -4659,7 +4659,7 @@ async function loadClientPayments(){
     clientInvoices=data||[];
     renderClientInvoiceHistory();
 }
-const CASHFREE_WALLET_CREATE_ORDER_URL = "https://zldgzojzsoxpyhlhkive.supabase.co/functions/v1/cashfree-wallet-create-order";
+const CASHFREE_WALLET_CREATE_ORDER_URL = "https://zldgzojzsoxpyhlhkive.supabase.co/functions/v1/cashfree-wallet-order";
 
 async function startWalletRecharge(){
     if(currentProfile?.role!=="client") return;
