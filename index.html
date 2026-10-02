@@ -4659,6 +4659,7 @@ async function loadClientPayments(){
     clientInvoices=data||[];
     renderClientInvoiceHistory();
 }
+// Cashfree wallet order endpoint
 const CASHFREE_WALLET_CREATE_ORDER_URL = "https://zldgzojzsoxpyhlhkive.supabase.co/functions/v1/cashfree-wallet-order";
 
 async function startWalletRecharge(){
@@ -4672,7 +4673,7 @@ async function startWalletRecharge(){
         const {data:session}=await supabaseClient.auth.getSession();
         const token=session?.session?.access_token;
         if(!token) return msg("walletRechargeMsg","Please login again and try.","error");
-        const res=await fetch(CASHFREE_WALLET_CREATE_ORDER_URL,{
+        const res=await fetch("https://zldgzojzsoxpyhlhkive.supabase.co/functions/v1/cashfree-wallet-order",{
             method:"POST",
             headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
             body:JSON.stringify({amount})
