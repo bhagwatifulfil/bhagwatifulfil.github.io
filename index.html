@@ -853,7 +853,7 @@ header{background:linear-gradient(135deg,#171b24 0%,#242936 100%);border:1px sol
   <h3>Add Money to Wallet</h3>
   <div class="small">Pay securely through Cashfree. After successful payment, the wallet balance will be credited automatically.</div>
   <div class="grid" style="margin-top:10px">
-   <div><label>Recharge Amount ₹</label><input id="walletRechargeAmount" type="number" min="0.01" step="0.01" placeholder="Enter amount (e.g. ₹25.50)"></div>
+   <div><label>Recharge Amount ₹</label><input id="walletRechargeAmount" type="number" min="100" step="1" placeholder="Enter amount (minimum ₹100)"></div>
   </div>
   <button class="primary" type="button" onclick="startWalletRecharge()">💳 ADD MONEY WITH CASHFREE</button>
   <div id="walletRechargeMsg" class="small" style="margin-top:8px"></div>
@@ -4659,12 +4659,12 @@ async function loadClientPayments(){
     clientInvoices=data||[];
     renderClientInvoiceHistory();
 }
-window.CASHFREE_WALLET_CREATE_ORDER_URL = "https://zldgzojzsoxpyhlhkive.supabase.co/functions/v1/cashfree-wallet-create-order";
+const CASHFREE_WALLET_CREATE_ORDER_URL = "https://zldgzojzsoxpyhlhkive.supabase.co/functions/v1/cashfree-wallet-order";
 
 async function startWalletRecharge(){
     if(currentProfile?.role!=="client") return;
     const amount=Number($("walletRechargeAmount")?.value||0);
-    if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100) return msg("walletRechargeMsg","Enter a valid recharge amount greater than ₹0 (up to 2 decimal places).","error");
+    if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100) return msg("walletRechargeMsg","Enter a valid amount greater than ₹0 (up to 2 decimal places).","error");
     const btn=document.querySelector('button[onclick="startWalletRecharge()"]');
     if(btn) btn.disabled=true;
     msg("walletRechargeMsg","Creating secure Cashfree payment...","ok");
@@ -4672,13 +4672,13 @@ async function startWalletRecharge(){
         const {data:session}=await supabaseClient.auth.getSession();
         const token=session?.session?.access_token;
         if(!token) return msg("walletRechargeMsg","Please login again and try.","error");
-        const res=await fetch(window.CASHFREE_WALLET_CREATE_ORDER_URL,{
+        const res=await fetch(CASHFREE_WALLET_CREATE_ORDER_URL,{
             method:"POST",
             headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
             body:JSON.stringify({amount})
         });
         const out=await res.json().catch(()=>({}));
-        if(!res.ok || !out.payment_session_id) return msg("walletRechargeMsg",out.error||out.message||"Cashfree payment could not be started.","error");
+        if(!res.ok || !out.payment_session_id) return msg("walletRechargeMsg",(out.error||out.message||("Cashfree request failed (HTTP "+res.status+"). Check the cashfree-wallet-order Edge Function and Cashfree keys.")),"error");
         const cashfree=Cashfree({mode:out.mode||"production"});
         await cashfree.checkout({paymentSessionId:out.payment_session_id,redirectTarget:"_self"});
     }catch(e){
