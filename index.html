@@ -853,7 +853,7 @@ header{background:linear-gradient(135deg,#171b24 0%,#242936 100%);border:1px sol
   <h3>Add Money to Wallet</h3>
   <div class="small">Pay securely through Cashfree. After successful payment, the wallet balance will be credited automatically.</div>
   <div class="grid" style="margin-top:10px">
-   <div><label>Recharge Amount ₹</label><input id="walletRechargeAmount" type="number" min="100" step="1" placeholder="Enter amount (minimum ₹100)"></div>
+   <div><label>Recharge Amount ₹</label><input id="walletRechargeAmount" type="number" min="0.01" step="0.01" placeholder="Enter recharge amount"></div>
   </div>
   <button class="primary" type="button" onclick="startWalletRecharge()">💳 ADD MONEY WITH CASHFREE</button>
   <div id="walletRechargeMsg" class="small" style="margin-top:8px"></div>
@@ -4659,7 +4659,7 @@ async function loadClientPayments(){
     clientInvoices=data||[];
     renderClientInvoiceHistory();
 }
-const CASHFREE_WALLET_CREATE_ORDER_URL = "https://zldgzojzsoxpyhlhkive.supabase.co/functions/v1/cashfree-wallet-order";
+// Cashfree wallet endpoint is used directly below to avoid a const temporal-dead-zone error.
 
 async function startWalletRecharge(){
     if(currentProfile?.role!=="client") return;
@@ -4672,7 +4672,7 @@ async function startWalletRecharge(){
         const {data:session}=await supabaseClient.auth.getSession();
         const token=session?.session?.access_token;
         if(!token) return msg("walletRechargeMsg","Please login again and try.","error");
-        const res=await fetch(CASHFREE_WALLET_CREATE_ORDER_URL,{
+        const res=await fetch("https://zldgzojzsoxpyhlhkive.supabase.co/functions/v1/cashfree-wallet-order",{
             method:"POST",
             headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},
             body:JSON.stringify({amount})
